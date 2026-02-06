@@ -2,121 +2,127 @@
 
 import { supabaseService } from '../../lib/supabase'
 
-export async function getNextEX() {
+/* =========================
+   CREATE EXPENSE
+========================= */
+export async function createExpense(form: FormData) {
 
-  const { data, error } = await supabaseService
+  const seq = await supabaseService
     .from('vr_sequence')
-    .select('*')
+    .select('last_no')
     .eq('id', 1)
-    .maybeSingle()
+    .single()
 
-  // ---- SAFETY FALLBACK ----
-  let last = 1000
-
-  if (data && typeof data.last_no === 'number') {
-    last = data.last_no
-  }
-
+  const last = seq.data?.last_no ?? 1000
   const next = last + 1
+  const expense_no = `EX-${next}`
 
-  // update sequence safely
   await supabaseService
     .from('vr_sequence')
     .update({ last_no: next })
     .eq('id', 1)
 
-  return `EX-${next}`
-}
-
-export async function createExpense(form: FormData) {
-
-  const expense_no = await getNextEX()
-
   const total = Number(form.get('total_amount'))
   const paid = Number(form.get('paid_amount'))
 
   if (paid > total) {
-    throw new Error('Paid cannot exceed total')
+    throw new Error('Paid amount cannot exceed total')
   }
 
   const balance = total - paid
 
   let credit_status = 'NO_CREDIT'
-
   if (paid === 0) credit_status = 'FULL_CREDIT'
   if (paid > 0 && balance > 0) credit_status = 'PARTIAL_CREDIT'
 
   const status = balance === 0 ? 'CLOSED' : 'OPEN'
 
-  // ----- Invoice Upload -----
   let bill_image_url = ''
-
   const invoice = form.get('invoice') as File
 
   if (invoice && invoice.size > 0) {
-
-    const fileName = Date.now() + '-' + invoice.name
-
-    await supabaseService
-      .storage
-      .from("expenses-bills")
-      .upload(fileName, invoice)
-
+    const name = Date.now() + '-' + invoice.name
+    await supabaseService.storage.from('expenses-bills').upload(name, invoice)
     bill_image_url =
-      supabaseService
-        .storage
-        .from("expenses-bills")
-        .getPublicUrl(fileName).data.publicUrl
+      supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
   }
 
-  // ----- First Payment Proof -----
   let first_payment_proof = ''
-
   const proof = form.get('payment_proof') as File
 
   if (proof && proof.size > 0) {
-
-    const fileName = Date.now() + '-' + proof.name
-
-    await supabaseService
-      .storage
-      .from("expenses-bills")
-      .upload(fileName, proof)
-
+    const name = Date.now() + '-' + proof.name
+    await supabaseService.storage.from('expenses-bills').upload(name, proof)
     first_payment_proof =
-      supabaseService
-        .storage
-        .from("expenses-bills")
-        .getPublicUrl(fileName).data.publicUrl
+      supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
   }
 
-  // ----- INSERT EXPENSE -----
-  const { error: insertError } = await supabaseService
-    .from("expenses")
-    .insert({
+  const ins = await supabaseService.from('expenses').insert({
+    expense_no,
+    expense_date: form.get('expense_date'),
+    site_id: form.get('site_id'),
+    total_amount: total,
+    paid_amount: paid,
+    balance_amount: balance,
+    credit_status,
+    status,
+    bill_image_url,
+    first_payment_proof,
+    category: form.get('category'),
+    description: form.get('description')
+  })
 
-      expense_no: expense_no,
+  if (ins.error) throw new Error(ins.error.message)
 
-      expense_date: form.get("expense_date"),
-      site_id: form.get("site_id"),
+  return { success: true, expense_no }
+}
 
-      total_amount: total,
-      paid_amount: paid,
-      balance_amount: balance,
+/* =========================
+   ADD PAYMENT
+========================= */
+export async function addPayment(expenseNo: string, form: FormData) {
 
-      credit_status: credit_status,
-      status: status,
+  const amount = Number(form.get('amount'))
+  const mode = form.get('payment_mode')
+  const file = form.get('proof') as File
 
-      bill_image_url: bill_image_url,
-      first_payment_proof: first_payment_proof,
+  const exp = await supabaseService
+    .from('expenses')
+    .select('id, total_amount, paid_amount, balance_amount')
+    .eq('expense_no', expenseNo)
+    .single()
 
-      category: form.get("category"),
-      description: form.get("description")
+  if (!exp.data) throw new Error('Expense not found')
+
+  if (amount > exp.data.balance_amount) {
+    throw new Error('Amount exceeds invoice balance')
+  }
+
+  const name = Date.now() + '-' + file.name
+  await supabaseService.storage.from('expenses-bills').upload(name, file)
+
+  const proofUrl =
+    supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
+
+  await supabaseService.from('expense_payments').insert({
+    expense_id: exp.data.id,
+    amount,
+    payment_mode: mode,
+    proof_url: proofUrl,
+    paid_date: new Date().toISOString()
+  })
+
+  const newPaid = exp.data.paid_amount + amount
+  const newBalance = exp.data.total_amount - newPaid
+
+  await supabaseService
+    .from('expenses')
+    .update({
+      paid_amount: newPaid,
+      balance_amount: newBalance,
+      status: newBalance === 0 ? 'CLOSED' : 'OPEN'
     })
-
-  if (insertError) {
-    throw new Error(insertError.message)
-  }
+    .eq('id', exp.data.id)
 
   return { success: true }
 }
