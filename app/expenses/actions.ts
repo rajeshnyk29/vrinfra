@@ -70,9 +70,26 @@ export async function createExpense(form: FormData) {
     first_payment_proof,
     category: form.get('category'),
     description: form.get('description')
-  })
+  }).select().single()
 
   if (ins.error) throw new Error(ins.error.message)
+
+  if (paid > 0 && first_payment_proof) {
+    const paymentMode = form.get('payment_method') || 'Cash'
+    
+    const paymentIns = await supabaseService.from('expense_payments').insert({
+      expense_id: ins.data.id,
+      amount: paid,
+      payment_mode: paymentMode,
+      proof_url: first_payment_proof,
+      paid_date: new Date().toISOString()
+    })
+
+    if (paymentIns.error) {
+      console.error('Failed to insert payment:', paymentIns.error)
+      throw new Error(`Failed to save payment record: ${paymentIns.error.message}`)
+    }
+  }
 
   return { success: true, expense_no }
 }
@@ -104,13 +121,17 @@ export async function addPayment(expenseNo: string, form: FormData) {
   const proofUrl =
     supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
 
-  await supabaseService.from('expense_payments').insert({
+  const paymentIns = await supabaseService.from('expense_payments').insert({
     expense_id: exp.data.id,
     amount,
     payment_mode: mode,
     proof_url: proofUrl,
     paid_date: new Date().toISOString()
   })
+
+  if (paymentIns.error) {
+    throw new Error(`Failed to save payment: ${paymentIns.error.message}`)
+  }
 
   const newPaid = exp.data.paid_amount + amount
   const newBalance = exp.data.total_amount - newPaid
