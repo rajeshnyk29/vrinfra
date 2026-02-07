@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabase'
 import { createExpense } from '../actions'
@@ -10,10 +11,25 @@ type Site = {
   name: string
 }
 
+type Category = {
+  id: string
+  name: string
+}
+
+type Vendor = {
+  id: string
+  name: string
+}
+
+const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow duration-200"
+const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
+
 export default function NewExpense() {
   const router = useRouter()
   const [sites, setSites] = useState<Site[]>([])
-  const [loadingSites, setLoadingSites] = useState(true)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [loadingMaster, setLoadingMaster] = useState(true)
 
   const [total, setTotal] = useState('')
   const [paid, setPaid] = useState('')
@@ -32,17 +48,23 @@ export default function NewExpense() {
   const [success, setSuccess] = useState<{ expense_no: string; total: number; paid: number; balance: number } | null>(null)
 
   useEffect(() => {
-    loadSites()
+    loadMasterData()
   }, [])
 
-  async function loadSites() {
+  async function loadMasterData() {
     try {
-      const { data } = await supabase.from('sites').select('*')
-      setSites(data || [])
+      const [sitesRes, categoriesRes, vendorsRes] = await Promise.all([
+        supabase.from('sites').select('id, name').order('name'),
+        supabase.from('categories').select('id, name').order('name'),
+        supabase.from('vendors').select('id, name').order('name')
+      ])
+      setSites(sitesRes.data || [])
+      setCategories(categoriesRes.data || [])
+      setVendors(vendorsRes.data || [])
     } catch (e) {
-      console.error('Failed to load sites', e)
+      console.error('Failed to load master data', e)
     } finally {
-      setLoadingSites(false)
+      setLoadingMaster(false)
     }
   }
 
@@ -68,6 +90,16 @@ export default function NewExpense() {
 
     if (paidNum > totalNum) {
       setError('Paid amount cannot exceed total amount')
+      return
+    }
+
+    if (!invoiceFileName) {
+      setError('Invoice proof is required. Please upload a photo or select from gallery.')
+      return
+    }
+
+    if (paidNum > 0 && !paymentFileName) {
+      setError('Payment proof is required when paid amount is greater than 0.')
       return
     }
 
@@ -100,284 +132,321 @@ export default function NewExpense() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-100 p-3">
-        <div className="max-w-md mx-auto bg-white rounded-xl shadow p-4 space-y-4">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-3 sm:p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">
+            <div className="text-center success-animate">
+              <div className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto success-pulse shadow-md shadow-emerald-500/30">
+                <span className="text-2xl text-white">✓</span>
+              </div>
+              <h1 className="text-lg font-bold text-emerald-800 mt-3">
+                Expense Saved Successfully
+              </h1>
+              <div className="text-xs text-slate-600 mt-0.5">
+                Expense No: <span className="font-semibold text-slate-800">{success.expense_no}</span>
+              </div>
+            </div>
 
-          <div className="text-center success-animate">
-            <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center mx-auto success-pulse">
-              <span className="text-4xl text-white">✓</span>
+            <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-3 text-xs">
+              <div className="flex justify-between py-1">
+                <span className="text-slate-700">Total</span>
+                <span className="font-semibold text-slate-900">₹{success.total}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-700">Paid</span>
+                <span className="font-semibold text-emerald-700">₹{success.paid}</span>
+              </div>
+              <div className="flex justify-between mt-1.5 pt-2 border-t border-amber-200">
+                <span className="text-slate-800 font-semibold">Pending Balance</span>
+                <span className={`font-bold text-base ${success.balance > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                  ₹{success.balance}
+                </span>
+              </div>
             </div>
-            <h1 className="text-xl font-bold text-green-700 mt-3">
-              Expense Saved Successfully
-            </h1>
-            <div className="text-sm text-gray-600 mt-1">
-              Expense No: <span className="font-semibold">{success.expense_no}</span>
-            </div>
-          </div>
 
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-700">Total</span>
-              <span className="font-semibold">₹{success.total}</span>
-            </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-gray-700">Paid</span>
-              <span className="font-semibold text-green-700">₹{success.paid}</span>
-            </div>
-            <div className="flex justify-between mt-2 pt-2 border-t border-yellow-200">
-              <span className="text-gray-800 font-semibold">Pending Balance</span>
-              <span className={`font-extrabold text-lg ${success.balance > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                ₹{success.balance}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {success.balance > 0 && (
+            <div className="space-y-2 pt-1">
+              {success.balance > 0 && (
+                <button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-semibold text-sm transition-colors duration-200"
+                  onClick={() => router.push(`/expenses/${success.expense_no}/add-payment`)}
+                >
+                  + Add Payment
+                </button>
+              )}
               <button
-                className="w-full bg-green-600 text-white p-3 rounded font-semibold text-base"
-                onClick={() => router.push(`/expenses/${success.expense_no}/add-payment`)}
+                className="w-full border-2 border-blue-600 text-blue-700 hover:bg-blue-50 py-2 rounded-lg text-xs font-semibold transition-colors duration-200"
+                onClick={() => router.push(`/expenses/${success.expense_no}/history`)}
               >
-                + Add Payment
+                View Payment History
               </button>
-            )}
-            <button
-              className="w-full border border-blue-700 text-blue-700 rounded p-3 text-sm font-semibold"
-              onClick={() => router.push(`/expenses/${success.expense_no}/history`)}
-            >
-              View Payment History
-            </button>
-            <button
-              className="w-full border border-gray-300 text-gray-700 rounded p-3 text-sm"
-              onClick={() => router.push('/dashboard')}
-            >
-              Go to Dashboard
-            </button>
+              <button
+                className="w-full border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg text-xs font-medium transition-colors duration-200"
+                onClick={() => router.push('/dashboard')}
+              >
+                Go to Dashboard
+              </button>
+            </div>
           </div>
-
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-3">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow p-4 space-y-4">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-3 sm:p-4">
+      <div className="max-w-md mx-auto">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 text-xs text-slate-600 hover:text-slate-900 mb-3 font-medium transition-colors"
+        >
+          ← Back to Dashboard
+        </Link>
 
-        <h2 className="text-xl font-bold text-blue-900">
-          New Expense
-        </h2>
+        <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">
+          <h1 className="text-lg font-bold text-slate-900">
+            New Expense
+          </h1>
 
-        {(totalNum > 0 || paidNum > 0) && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-700">Total</span>
-              <span className="font-semibold">₹{totalNum}</span>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className={labelClass}>Expense Date</label>
+              <input
+                name="expense_date"
+                type="date"
+                max={new Date().toISOString().split('T')[0]}
+                className={inputClass}
+                required
+              />
             </div>
-            <div className="flex justify-between mt-1">
-              <span className="text-gray-700">Paid</span>
-              <span className="font-semibold text-green-700">₹{paidNum}</span>
+
+            <div>
+              <label className={labelClass}>Site</label>
+              {loadingMaster ? (
+                <div className="text-xs text-slate-500 py-1">Loading...</div>
+              ) : (
+                <select
+                  name="site_id"
+                  className={inputClass}
+                  required
+                >
+                  <option value="">Choose Site</option>
+                  {sites.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
-            <div className="flex justify-between mt-2 pt-2 border-t border-yellow-200">
-              <span className="text-gray-800 font-semibold">Balance</span>
-              <span className={`font-extrabold text-lg ${balance > 0 ? 'text-red-600' : balance < 0 ? 'text-red-800' : 'text-green-700'}`}>
-                ₹{balance}
-              </span>
+
+            <div>
+              <label className={labelClass}>Category</label>
+              {loadingMaster ? (
+                <div className="text-xs text-slate-500 py-1">Loading...</div>
+              ) : (
+                <select
+                  name="category_id"
+                  className={inputClass}
+                >
+                  <option value="">Choose Category</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
-            {balance < 0 && (
-              <div className="text-xs text-red-600 mt-1">
-                ⚠️ Paid amount exceeds total
+
+            <div>
+              <label className={labelClass}>Vendor</label>
+              {loadingMaster ? (
+                <div className="text-xs text-slate-500 py-1">Loading...</div>
+              ) : (
+                <select
+                  name="vendor_id"
+                  className={inputClass}
+                >
+                  <option value="">Choose Vendor</option>
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            <div className="bg-blue-50/80 border border-blue-200/80 rounded-lg p-3 space-y-3">
+              <span className="text-sm font-bold text-blue-900">Invoice</span>
+              <div>
+                <label className={labelClass}>Total Amount</label>
+                <input
+                  name="total_amount"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="Enter total amount"
+                  className={inputClass}
+                  value={total}
+                  onChange={e => setTotal(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Invoice Proof <span className="text-red-600">*</span></label>
+                <input
+                  ref={invoiceCamera}
+                  name="invoice"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')}
+                />
+                <input
+                  ref={invoiceGallery}
+                  name="invoice"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => invoiceCamera.current?.click()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200"
+                  >
+                    📷 Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => invoiceGallery.current?.click()}
+                    className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200"
+                  >
+                    🖼 From Gallery
+                  </button>
+                </div>
+                {invoiceFileName && (
+                  <div className="text-xs text-slate-600 mt-1">📎 {invoiceFileName}</div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-3 space-y-3">
+              <span className="text-sm font-bold text-emerald-900">Payment Done Now</span>
+              <div>
+                <label className={labelClass}>Paid Amount</label>
+                <input
+                  name="paid_amount"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="Enter paid amount"
+                  className={inputClass}
+                  value={paid}
+                  onChange={e => setPaid(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Payment Method</label>
+                <select
+                  name="payment_method"
+                  className={inputClass}
+                  value={paymentMode}
+                  onChange={e => setPaymentMode(e.target.value)}
+                  required
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Bank">Bank</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelClass}>Payment Proof {paidNum > 0 && <span className="text-red-600">*</span>}</label>
+                <input
+                  ref={payCamera}
+                  name="payment_proof"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')}
+                />
+                <input
+                  ref={payGallery}
+                  name="payment_proof"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => payCamera.current?.click()}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200"
+                  >
+                    📷 Take Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => payGallery.current?.click()}
+                    className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200"
+                  >
+                    🖼 From Gallery
+                  </button>
+                </div>
+                {paymentFileName && (
+                  <div className="text-xs text-slate-600 mt-1">📎 {paymentFileName}</div>
+                )}
+              </div>
+            </div>
+
+            {(totalNum > 0 || paidNum > 0) && (
+              <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-3 text-xs">
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-700">Total</span>
+                  <span className="font-semibold text-slate-900">₹{totalNum}</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-700">Paid</span>
+                  <span className="font-semibold text-emerald-700">₹{paidNum}</span>
+                </div>
+                <div className="flex justify-between mt-1.5 pt-2 border-t border-amber-200">
+                  <span className="text-slate-800 font-semibold">Balance</span>
+                  <span className={`font-bold text-base ${balance > 0 ? 'text-red-600' : balance < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                    ₹{balance}
+                  </span>
+                </div>
+                {balance < 0 && (
+                  <div className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    ⚠️ Paid amount exceeds total
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">Expense Date</label>
-            <input
-              name="expense_date"
-              type="date"
-              max={new Date().toISOString().split('T')[0]}
-              className="w-full border p-2 rounded text-base"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">Site</label>
-            {loadingSites ? (
-              <div className="text-sm text-gray-500">Loading sites...</div>
-            ) : (
-              <select
-                name="site_id"
-                className="w-full border p-2 rounded text-base"
-                required
-              >
-                <option value="">Choose Site</option>
-                {sites.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="font-bold mb-2 text-blue-900">Invoice</div>
-            <div className="mb-2">
-              <label className="block text-sm font-semibold mb-1">Total Amount</label>
-              <input
-                name="total_amount"
-                type="number"
-                inputMode="decimal"
-                placeholder="Enter total amount"
-                className="w-full border p-2 rounded text-base"
-                value={total}
-                onChange={e => setTotal(e.target.value)}
-                required
+            <div>
+              <label className={labelClass}>Description <span className="text-slate-500 font-normal">(optional)</span></label>
+              <textarea
+                name="description"
+                placeholder="Additional notes..."
+                rows={2}
+                className={`${inputClass} resize-none`}
               />
             </div>
-            <div className="text-sm font-semibold mb-1">Invoice Proof</div>
-            <input
-              ref={invoiceCamera}
-              name="invoice"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')}
-            />
-            <input
-              ref={invoiceGallery}
-              name="invoice"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => invoiceCamera.current?.click()}
-                className="bg-blue-700 text-white p-2 rounded font-semibold text-sm"
-              >
-                📷 Take Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => invoiceGallery.current?.click()}
-                className="bg-gray-700 text-white p-2 rounded font-semibold text-sm"
-              >
-                🖼 From Gallery
-              </button>
-            </div>
-            {invoiceFileName && (
-              <div className="text-xs text-gray-700 mt-1">📎 {invoiceFileName}</div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+                <span>⚠️</span>
+                {error}
+              </div>
             )}
-          </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-            <div className="font-bold mb-2 text-green-900">Payment Done Now</div>
-            <div className="mb-2">
-              <label className="block text-sm font-semibold mb-1">Paid Amount</label>
-              <input
-                name="paid_amount"
-                type="number"
-                inputMode="decimal"
-                placeholder="Enter paid amount"
-                className="w-full border p-2 rounded text-base"
-                value={paid}
-                onChange={e => setPaid(e.target.value)}
-                required
-              />
-            </div>
-            <div className="mb-2">
-              <label className="block text-sm font-semibold mb-1">Payment Method</label>
-              <select
-                name="payment_method"
-                className="w-full border p-2 rounded text-base"
-                value={paymentMode}
-                onChange={e => setPaymentMode(e.target.value)}
-                required
-              >
-                <option value="Cash">Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="Bank">Bank</option>
-              </select>
-            </div>
-            <div className="text-sm font-semibold mb-1">Payment Proof</div>
-            <input
-              ref={payCamera}
-              name="payment_proof"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')}
-            />
-            <input
-              ref={payGallery}
-              name="payment_proof"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => payCamera.current?.click()}
-                className="bg-green-700 text-white p-2 rounded font-semibold text-sm"
-              >
-                📷 Take Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => payGallery.current?.click()}
-                className="bg-gray-700 text-white p-2 rounded font-semibold text-sm"
-              >
-                🖼 From Gallery
-              </button>
-            </div>
-            {paymentFileName && (
-              <div className="text-xs text-gray-700 mt-1">📎 {paymentFileName}</div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">Category <span className="text-gray-500 font-normal">(optional)</span></label>
-            <input
-              name="category"
-              placeholder="e.g., Material, Labor, Equipment"
-              className="w-full border p-2 rounded text-base"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold mb-1">Description <span className="text-gray-500 font-normal">(optional)</span></label>
-            <textarea
-              name="description"
-              placeholder="Additional notes..."
-              rows={3}
-              className="w-full border p-2 rounded text-base"
-            />
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-600">{error}</div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full bg-blue-700 text-white p-3 rounded font-semibold text-base disabled:opacity-60"
-            disabled={saving}
-          >
-            {saving ? 'Saving Expense...' : 'Save Expense'}
-          </button>
-
-        </form>
-
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
+              disabled={saving}
+            >
+              {saving ? 'Saving Expense...' : 'Save Expense'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )

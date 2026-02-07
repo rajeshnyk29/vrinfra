@@ -7,7 +7,9 @@ type Expense = {
   id: string
   expense_no: string
   site_id: string | null
-  category: string
+  category_id: string | null
+  category: string | null
+  vendor_id: string | null
   description: string | null
   total_amount: number
   paid_amount: number
@@ -25,9 +27,11 @@ type Props = {
   sites: Site[]
   paymentsByExpenseId: Record<string, { proof_url: string }[]>
   siteMap: Record<string, string>
+  categoryMap: Record<string, string>
+  vendorMap: Record<string, string>
 }
 
-export default function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap }: Props) {
+export default function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap, categoryMap, vendorMap }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'OPEN' | 'CLOSED'>('all')
   const [siteFilter, setSiteFilter] = useState<string>('all')
   const [template, setTemplate] = useState<Template>('card')
@@ -40,6 +44,16 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
 
   function getSiteName(exp: Expense) {
     return exp.site_id ? siteMap[exp.site_id] || 'Unknown' : 'Unassigned'
+  }
+
+  function getCategoryName(exp: Expense) {
+    if (exp.category_id && categoryMap[exp.category_id]) return categoryMap[exp.category_id]
+    if (exp.category) return exp.category
+    return '—'
+  }
+
+  function getVendorName(exp: Expense) {
+    return exp.vendor_id && vendorMap[exp.vendor_id] ? vendorMap[exp.vendor_id] : '—'
   }
 
   function ProofChips({ expId }: { expId: string }) {
@@ -158,6 +172,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
           <div className="md:hidden space-y-3">
             {filtered.map((exp) => {
               const siteName = getSiteName(exp)
+              const categoryName = getCategoryName(exp)
+              const vendorName = getVendorName(exp)
               return (
                 <div key={exp.id} className="border rounded p-3 shadow-sm bg-white">
                   <div className="flex justify-between">
@@ -168,7 +184,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{siteName}</p>
                   <div className="mt-1.5 pl-3 border-l-4 border-blue-500">
-                    <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{exp.category || '—'}</span>
+                    <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{categoryName}</span>
+                    {vendorName !== '—' && <span className="ml-1 text-xs text-gray-600">• {vendorName}</span>}
                     {exp.description && <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">{exp.description}</p>}
                   </div>
                   <div className="grid grid-cols-3 text-sm mt-2">
@@ -200,6 +217,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
               <div className="space-y-3">
                 {filtered.map((exp) => {
                   const siteName = getSiteName(exp)
+                  const categoryName = getCategoryName(exp)
+                  const vendorName = getVendorName(exp)
                   return (
                     <div key={exp.id} className="border rounded p-3 shadow-sm bg-white">
                       <div className="flex justify-between">
@@ -208,7 +227,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                       </div>
                       <p className="text-xs text-gray-500 mt-0.5">{siteName}</p>
                       <div className="mt-1.5 pl-3 border-l-4 border-blue-500">
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{exp.category || '—'}</span>
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{categoryName}</span>
+                        {vendorName !== '—' && <span className="ml-1 text-xs text-gray-600">• {vendorName}</span>}
                         {exp.description && <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">{exp.description}</p>}
                       </div>
                       <div className="grid grid-cols-3 text-sm mt-2">
@@ -239,6 +259,7 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                       <th className="text-left p-2 font-semibold">Expense</th>
                       <th className="text-left p-2 font-semibold">Site</th>
                       <th className="text-left p-2 font-semibold">Category</th>
+                      <th className="text-left p-2 font-semibold">Vendor</th>
                       <th className="text-left p-2 font-semibold">Description</th>
                       <th className="text-right p-2 font-semibold">Total</th>
                       <th className="text-right p-2 font-semibold">Paid</th>
@@ -253,7 +274,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                       <tr key={exp.id} className="border-b hover:bg-gray-50">
                         <td className="p-2 font-medium">{exp.expense_no}</td>
                         <td className="p-2">{getSiteName(exp)}</td>
-                        <td className="p-2">{exp.category || '—'}</td>
+                        <td className="p-2">{getCategoryName(exp)}</td>
+                        <td className="p-2">{getVendorName(exp)}</td>
                         <td className="p-2 max-w-[150px] truncate" title={exp.description || ''}>{exp.description || '—'}</td>
                         <td className="p-2 text-right">₹{exp.total_amount}</td>
                         <td className="p-2 text-right">₹{exp.paid_amount}</td>
@@ -276,7 +298,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                   <div key={exp.id} className="flex items-center gap-4 py-2 px-3 border rounded hover:bg-gray-50 text-sm">
                     <span className="font-bold w-20">{exp.expense_no}</span>
                     <span className="w-24 truncate">{getSiteName(exp)}</span>
-                    <span className="w-20 truncate">{exp.category || '—'}</span>
+                    <span className="w-24 truncate">{getCategoryName(exp)}</span>
+                    <span className="w-24 truncate">{getVendorName(exp)}</span>
                     <span className="flex-1 truncate text-gray-500 max-w-[120px]">{exp.description || '—'}</span>
                     <span>₹{exp.total_amount}</span>
                     <span>₹{exp.paid_amount}</span>
@@ -296,7 +319,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                     <div className="flex items-center gap-4 min-w-0">
                       <span className="font-bold shrink-0">{exp.expense_no}</span>
                       <span className="text-gray-500 shrink-0">{getSiteName(exp)}</span>
-                      <span className="shrink-0">{exp.category || '—'}</span>
+                      <span className="shrink-0">{getCategoryName(exp)}</span>
+                      <span className="shrink-0">{getVendorName(exp)}</span>
                       <span className="truncate text-gray-500">{exp.description || '—'}</span>
                     </div>
                     <div className="flex items-center gap-4 shrink-0">

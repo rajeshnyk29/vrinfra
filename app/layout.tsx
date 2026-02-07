@@ -7,12 +7,17 @@ export default function Layout({
 }) {
   return (
     <html>
-      <body>
-        <div>
-          <h1 className="text-2xl font-bold p-3 bg-blue-900 text-white">
-            VR Infra Expense
-          </h1>
-
+      <body className="min-h-screen">
+        <div className="min-h-screen">
+          <header className="bg-slate-900/95 backdrop-blur border-b border-white/10 sticky top-0 z-10">
+            <div className="max-w-6xl mx-auto px-4 py-3">
+              <a href="/" className="block">
+                <h1 className="text-xl sm:text-2xl font-bold text-white">
+                  VR Infra
+                </h1>
+              </a>
+            </div>
+          </header>
           {children}
         </div>
       </body>

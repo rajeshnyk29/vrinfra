@@ -29,6 +29,18 @@ export async function createExpense(form: FormData) {
     throw new Error('Paid amount cannot exceed total')
   }
 
+  const invoice = form.get('invoice') as File
+  if (!invoice || invoice.size === 0) {
+    throw new Error('Invoice proof is required')
+  }
+
+  if (paid > 0) {
+    const proof = form.get('payment_proof') as File
+    if (!proof || proof.size === 0) {
+      throw new Error('Payment proof is required when paid amount is greater than 0')
+    }
+  }
+
   const balance = total - paid
 
   let credit_status = 'NO_CREDIT'
@@ -38,8 +50,6 @@ export async function createExpense(form: FormData) {
   const status = balance === 0 ? 'CLOSED' : 'OPEN'
 
   let bill_image_url = ''
-  const invoice = form.get('invoice') as File
-
   if (invoice && invoice.size > 0) {
     const name = Date.now() + '-' + invoice.name
     await supabaseService.storage.from('expenses-bills').upload(name, invoice)
@@ -57,10 +67,15 @@ export async function createExpense(form: FormData) {
       supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
   }
 
+  const categoryId = form.get('category_id') as string
+  const vendorId = form.get('vendor_id') as string
+
   const ins = await supabaseService.from('expenses').insert({
     expense_no,
     expense_date: form.get('expense_date'),
     site_id: form.get('site_id'),
+    category_id: categoryId || null,
+    vendor_id: vendorId || null,
     total_amount: total,
     paid_amount: paid,
     balance_amount: balance,
@@ -68,7 +83,6 @@ export async function createExpense(form: FormData) {
     status,
     bill_image_url,
     first_payment_proof,
-    category: form.get('category'),
     description: form.get('description')
   }).select().single()
 

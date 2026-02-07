@@ -7,7 +7,10 @@ type Expense = {
   id: string
   expense_no: string
   site_id: string | null
-  category: string
+  category_id: string | null
+  category: string | null
+  vendor_id: string | null
+  description: string | null
   total_amount: number
   paid_amount: number
   balance_amount: number
@@ -17,6 +20,10 @@ type Expense = {
 
 type Site = { id: string; name: string }
 
+type Category = { id: string; name: string }
+
+type Vendor = { id: string; name: string }
+
 export default async function Dashboard() {
   const { data: expenses, error } = await supabase
     .from('expenses')
@@ -25,6 +32,14 @@ export default async function Dashboard() {
 
   const { data: sites } = await supabase
     .from('sites')
+    .select('id, name')
+
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('id, name')
+
+  const { data: vendors } = await supabase
+    .from('vendors')
     .select('id, name')
 
   const { data: payments } = await supabase
@@ -47,6 +62,16 @@ export default async function Dashboard() {
     siteMap[s.id] = s.name
   })
 
+  const categoryMap: Record<string, string> = {}
+  ;(categories || []).forEach((c: Category) => {
+    categoryMap[c.id] = c.name
+  })
+
+  const vendorMap: Record<string, string> = {}
+  ;(vendors || []).forEach((v: Vendor) => {
+    vendorMap[v.id] = v.name
+  })
+
   if (error) {
     return (
       <div className="p-4">
@@ -62,6 +87,8 @@ export default async function Dashboard() {
       sites={sites || []}
       paymentsByExpenseId={paymentsByExpenseId}
       siteMap={siteMap}
+      categoryMap={categoryMap}
+      vendorMap={vendorMap}
     />
   )
 }
