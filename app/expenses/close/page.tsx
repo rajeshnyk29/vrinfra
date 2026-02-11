@@ -1,3 +1,3 @@
 export default function ClosePage() {
-    return null;
+    return <div></div>;
   }
