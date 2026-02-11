@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import ExcelJS from 'exceljs'
 
 type Expense = {
   id: string
@@ -16,11 +17,13 @@ type Expense = {
   balance_amount: number
   status: string
   bill_image_url: string | null
+  expense_date?: string | null
+  created_at?: string | null
 }
 
 type Site = { id: string; name: string }
 
-type Template = 'card' | 'table' | 'compact' | 'list'
+type Template = 'card' | 'table'
 
 type Props = {
   expenses: Expense[]
@@ -31,16 +34,72 @@ type Props = {
   vendorMap: Record<string, string>
 }
 
-export default function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap, categoryMap, vendorMap }: Props) {
+function getMonthKey(exp: Expense): string | null {
+  const dateStr = exp.expense_date || exp.created_at
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap, categoryMap, vendorMap }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'OPEN' | 'CLOSED'>('all')
   const [siteFilter, setSiteFilter] = useState<string>('all')
-  const [template, setTemplate] = useState<Template>('card')
+  const [monthFilter, setMonthFilter] = useState<string>('')
+  const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set())
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
+  const categoryDropdownRef = useRef<HTMLDivElement>(null)
+  const [template, setTemplate] = useState<Template>('table')
+
+  const categories = Object.entries(categoryMap).map(([id, name]) => ({ id, name }))
 
   const filtered = expenses.filter((e) => {
     const matchStatus = statusFilter === 'all' || e.status === statusFilter
     const matchSite = siteFilter === 'all' || e.site_id === siteFilter
-    return matchStatus && matchSite
+    const matchMonth = !monthFilter || getMonthKey(e) === monthFilter
+    const matchCategory =
+      categoryFilter.size === 0 ||
+      (e.category_id !== null && categoryFilter.has(e.category_id)) ||
+      (e.category && categories.some((c) => categoryFilter.has(c.id) && c.name === e.category))
+    return matchStatus && matchSite && matchMonth && matchCategory
   })
+
+  const totals = filtered.reduce(
+    (acc, exp) => ({
+      total_amount: acc.total_amount + exp.total_amount,
+      paid_amount: acc.paid_amount + exp.paid_amount,
+      balance_amount: acc.balance_amount + exp.balance_amount,
+    }),
+    { total_amount: 0, paid_amount: 0, balance_amount: 0 }
+  )
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+        setCategoryDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  function toggleCategory(id: string) {
+    setCategoryFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAllCategories() {
+    if (categoryFilter.size === categories.length) {
+      setCategoryFilter(new Set())
+    } else {
+      setCategoryFilter(new Set(categories.map((c) => c.id)))
+    }
+  }
 
   function getSiteName(exp: Expense) {
     return exp.site_id ? siteMap[exp.site_id] || 'Unknown' : 'Unassigned'
@@ -90,20 +149,110 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
     return (
       <div className="flex gap-1 flex-wrap">
         {exp.bill_image_url && (
-          <a href={exp.bill_image_url} target="_blank" className="bg-gray-200 px-1.5 py-0.5 rounded text-xs">
+          <a
+            href={exp.bill_image_url}
+            target="_blank"
+            className="bg-gray-200 px-1.5 py-0.5 rounded text-xs"
+            title="Invoice proof"
+          >
             👁
           </a>
         )}
         {exp.status === 'OPEN' && (
-          <Link href={`/expenses/${exp.expense_no}/add-payment`} className="bg-green-600 text-white px-1.5 py-0.5 rounded text-xs">
+          <Link
+            href={`/expenses/${exp.expense_no}/add-payment`}
+            className="bg-green-600 text-white px-1.5 py-0.5 rounded text-xs"
+            title="Add payment"
+          >
             +
           </Link>
         )}
-        <Link href={`/expenses/${exp.expense_no}/history`} className="bg-blue-100 px-1.5 py-0.5 rounded text-xs">
-          Hist
+        <Link
+          href={`/expenses/${exp.expense_no}/history`}
+          className="bg-blue-100 px-1.5 py-0.5 rounded text-xs"
+          title="Payment history"
+        >
+          History
         </Link>
+        {exp.status === 'CLOSED' && (
+          <Link
+            href={`/expenses/${exp.expense_no}/print`}
+            className="bg-gray-300 px-1.5 py-0.5 rounded text-xs"
+            title="Print"
+          >
+            🖨️
+          </Link>
+        )}
       </div>
     )
+  }
+
+  const summaryBar = (
+    <div className="bg-indigo-50 border border-indigo-200 rounded p-3 flex flex-wrap justify-between items-center gap-2 text-sm font-semibold">
+      <span>Summary</span>
+      <div className="flex gap-6">
+        <span>Total: ₹{totals.total_amount}</span>
+        <span>Paid: ₹{totals.paid_amount}</span>
+        <span>Bal: ₹{totals.balance_amount}</span>
+      </div>
+    </div>
+  )
+
+  async function handleExportCurrentView() {
+    if (filtered.length === 0) {
+      alert('No expenses to export for current filters.')
+      return
+    }
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Dashboard')
+
+    worksheet.columns = [
+      { header: 'Expense No', key: 'expense_no', width: 15 },
+      { header: 'Site', key: 'site', width: 20 },
+      { header: 'Category', key: 'category', width: 20 },
+      { header: 'Vendor', key: 'vendor', width: 20 },
+      { header: 'Description', key: 'description', width: 40 },
+      { header: 'Total Amount', key: 'total', width: 15 },
+      { header: 'Paid Amount', key: 'paid', width: 15 },
+      { header: 'Balance Amount', key: 'balance', width: 15 },
+      { header: 'Status', key: 'status', width: 12 },
+    ]
+
+    filtered.forEach((exp) => {
+      worksheet.addRow({
+        expense_no: exp.expense_no,
+        site: getSiteName(exp),
+        category: getCategoryName(exp),
+        vendor: getVendorName(exp),
+        description: exp.description ?? '',
+        total: exp.total_amount,
+        paid: exp.paid_amount,
+        balance: exp.balance_amount,
+        status: exp.status,
+      })
+    })
+
+    const totalsRow = worksheet.addRow({
+      description: 'Totals',
+      total: totals.total_amount,
+      paid: totals.paid_amount,
+      balance: totals.balance_amount,
+    })
+    totalsRow.font = { bold: true }
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'dashboard-expenses.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
   }
 
   return (
@@ -111,7 +260,24 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
       <h1 className="text-xl font-bold mb-3">Dashboard</h1>
 
       <div className="mb-4 space-y-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden md:block">
+          <label className="block text-xs text-gray-500 mb-1">Layout (desktop)</label>
+          <div className="flex gap-2">
+            {(['table', 'card'] as Template[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTemplate(t)}
+                className={`px-3 py-1.5 rounded text-sm font-medium capitalize ${
+                  template === t ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 items-end">
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
@@ -130,37 +296,78 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
           >
             Closed
           </button>
-        </div>
 
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Filter by site</label>
-          <select
-            value={siteFilter}
-            onChange={(e) => setSiteFilter(e.target.value)}
-            className="w-full max-w-xs border p-2 rounded text-sm"
-          >
-            <option value="all">All sites</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="hidden md:block">
-          <label className="block text-xs text-gray-500 mb-1">Layout (desktop)</label>
-          <div className="flex gap-2">
-            {(['card', 'table', 'compact', 'list'] as Template[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTemplate(t)}
-                className={`px-3 py-1.5 rounded text-sm font-medium capitalize ${
-                  template === t ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                {t}
-              </button>
-            ))}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Month</label>
+            <input
+              type="month"
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="border p-2 rounded text-sm"
+            />
           </div>
+
+          <div className="relative" ref={categoryDropdownRef}>
+            <label className="block text-xs text-gray-500 mb-1">Category</label>
+            <button
+              type="button"
+              onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+              className="w-full min-w-[180px] border p-2 rounded text-sm text-left bg-white flex justify-between items-center"
+            >
+              <span>
+                {categoryFilter.size === 0
+                  ? 'All categories'
+                  : `${categoryFilter.size} selected`}
+              </span>
+              <span className="text-gray-400">{categoryDropdownOpen ? '▲' : '▼'}</span>
+            </button>
+            {categoryDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 z-10 bg-white border rounded shadow-lg max-h-60 overflow-y-auto min-w-[180px]">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllCategories}
+                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 border-b"
+                >
+                  {categoryFilter.size === categories.length ? 'Deselect all' : 'Select all'}
+                </button>
+                {categories.map(({ id, name }) => (
+                  <label
+                    key={id}
+                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={categoryFilter.has(id)}
+                      onChange={() => toggleCategory(id)}
+                      className="rounded"
+                    />
+                    <span>{name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Filter by site</label>
+            <select
+              value={siteFilter}
+              onChange={(e) => setSiteFilter(e.target.value)}
+              className="w-full max-w-xs border p-2 rounded text-sm"
+            >
+              <option value="all">All sites</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            onClick={handleExportCurrentView}
+            className="ml-auto px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 text-white"
+          >
+            Export to Excel
+          </button>
         </div>
       </div>
 
@@ -168,8 +375,8 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
         <div className="text-gray-500 text-sm">No expenses match the filters</div>
       ) : (
         <>
-          {/* Mobile: always card */}
           <div className="md:hidden space-y-3">
+            {summaryBar}
             {filtered.map((exp) => {
               const siteName = getSiteName(exp)
               const categoryName = getCategoryName(exp)
@@ -199,22 +406,25 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                   </div>
                   <div className="mt-3 flex gap-2 text-xs">
                     {exp.bill_image_url && (
-                      <a href={exp.bill_image_url} target="_blank" className="bg-gray-200 px-2 py-1 rounded">👁 Invoice</a>
+                      <a href={exp.bill_image_url} target="_blank" className="bg-gray-200 px-2 py-1 rounded" title="Invoice proof">👁 Invoice</a>
                     )}
                     {exp.status === 'OPEN' && (
-                      <Link href={`/expenses/${exp.expense_no}/add-payment`} className="bg-green-600 text-white px-2 py-1 rounded">+ Payment</Link>
+                      <Link href={`/expenses/${exp.expense_no}/add-payment`} className="bg-green-600 text-white px-2 py-1 rounded" title="Add payment">+ Payment</Link>
                     )}
-                    <Link href={`/expenses/${exp.expense_no}/history`} className="bg-blue-100 px-2 py-1 rounded">History</Link>
+                    <Link href={`/expenses/${exp.expense_no}/history`} className="bg-blue-100 px-2 py-1 rounded" title="Payment history">History</Link>
+                    {exp.status === 'CLOSED' && (
+                      <Link href={`/expenses/${exp.expense_no}/print`} className="bg-gray-300 px-2 py-1 rounded" title="Print">🖨️ Print</Link>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Desktop: selected template */}
           <div className="hidden md:block">
             {template === 'card' && (
               <div className="space-y-3">
+                {summaryBar}
                 {filtered.map((exp) => {
                   const siteName = getSiteName(exp)
                   const categoryName = getCategoryName(exp)
@@ -241,9 +451,12 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                         <ProofChips expId={exp.id} />
                       </div>
                       <div className="mt-3 flex gap-2 text-xs">
-                        {exp.bill_image_url && <a href={exp.bill_image_url} target="_blank" className="bg-gray-200 px-2 py-1 rounded">👁 Invoice</a>}
-                        {exp.status === 'OPEN' && <Link href={`/expenses/${exp.expense_no}/add-payment`} className="bg-green-600 text-white px-2 py-1 rounded">+ Payment</Link>}
-                        <Link href={`/expenses/${exp.expense_no}/history`} className="bg-blue-100 px-2 py-1 rounded">History</Link>
+                        {exp.bill_image_url && <a href={exp.bill_image_url} target="_blank" className="bg-gray-200 px-2 py-1 rounded" title="Invoice proof">👁 Invoice</a>}
+                        {exp.status === 'OPEN' && <Link href={`/expenses/${exp.expense_no}/add-payment`} className="bg-green-600 text-white px-2 py-1 rounded" title="Add payment">+ Payment</Link>}
+                        <Link href={`/expenses/${exp.expense_no}/history`} className="bg-blue-100 px-2 py-1 rounded" title="Payment history">History</Link>
+                        {exp.status === 'CLOSED' && (
+                          <Link href={`/expenses/${exp.expense_no}/print`} className="bg-gray-300 px-2 py-1 rounded" title="Print">🖨️ Print</Link>
+                        )}
                       </div>
                     </div>
                   )
@@ -289,48 +502,7 @@ export default function DashboardContent({ expenses, sites, paymentsByExpenseId,
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-
-            {template === 'compact' && (
-              <div className="space-y-1">
-                {filtered.map((exp) => (
-                  <div key={exp.id} className="flex items-center gap-4 py-2 px-3 border rounded hover:bg-gray-50 text-sm">
-                    <span className="font-bold w-20">{exp.expense_no}</span>
-                    <span className="w-24 truncate">{getSiteName(exp)}</span>
-                    <span className="w-24 truncate">{getCategoryName(exp)}</span>
-                    <span className="w-24 truncate">{getVendorName(exp)}</span>
-                    <span className="flex-1 truncate text-gray-500 max-w-[120px]">{exp.description || '—'}</span>
-                    <span>₹{exp.total_amount}</span>
-                    <span>₹{exp.paid_amount}</span>
-                    <span className="font-medium">₹{exp.balance_amount}</span>
-                    <span className={exp.status === 'OPEN' ? 'bg-orange-200 px-1.5 py-0.5 rounded text-xs' : 'bg-green-200 px-1.5 py-0.5 rounded text-xs'}>{exp.status}</span>
-                    <ProofChips expId={exp.id} />
-                    <ActionLinks exp={exp} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {template === 'list' && (
-              <div className="space-y-2">
-                {filtered.map((exp) => (
-                  <div key={exp.id} className="flex items-center justify-between py-2 px-3 border rounded hover:bg-gray-50">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <span className="font-bold shrink-0">{exp.expense_no}</span>
-                      <span className="text-gray-500 shrink-0">{getSiteName(exp)}</span>
-                      <span className="shrink-0">{getCategoryName(exp)}</span>
-                      <span className="shrink-0">{getVendorName(exp)}</span>
-                      <span className="truncate text-gray-500">{exp.description || '—'}</span>
-                    </div>
-                    <div className="flex items-center gap-4 shrink-0">
-                      <span>₹{exp.balance_amount} bal</span>
-                      <span className={exp.status === 'OPEN' ? 'bg-orange-200 px-1.5 py-0.5 rounded text-xs' : 'bg-green-200 px-1.5 py-0.5 rounded text-xs'}>{exp.status}</span>
-                      <ProofChips expId={exp.id} />
-                      <ActionLinks exp={exp} />
-                    </div>
-                  </div>
-                ))}
+                {summaryBar}
               </div>
             )}
           </div>

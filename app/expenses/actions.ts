@@ -2,6 +2,12 @@
 
 import { supabaseService } from '../../lib/supabase'
 
+function isValidUuid(id: string | null | undefined): boolean {
+  if (!id || typeof id !== 'string') return false
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(id)
+}
+
 /* =========================
    CREATE EXPENSE
 ========================= */
@@ -90,14 +96,22 @@ export async function createExpense(form: FormData) {
 
   if (paid > 0 && first_payment_proof) {
     const paymentMode = form.get('payment_method') || 'Cash'
-    
-    const paymentIns = await supabaseService.from('expense_payments').insert({
+    const addedByUserId = form.get('added_by_user_id') as string | null
+    const addedByName = (form.get('added_by_name') as string)?.trim() || null
+
+    const paymentData: Record<string, unknown> = {
       expense_id: ins.data.id,
       amount: paid,
       payment_mode: paymentMode,
       proof_url: first_payment_proof,
-      paid_date: new Date().toISOString()
-    })
+      paid_date: new Date().toISOString(),
+      added_by_name: addedByName
+    }
+    if (isValidUuid(addedByUserId)) {
+      paymentData.added_by_user_id = addedByUserId
+    }
+
+    const paymentIns = await supabaseService.from('expense_payments').insert(paymentData)
 
     if (paymentIns.error) {
       console.error('Failed to insert payment:', paymentIns.error)
@@ -116,6 +130,8 @@ export async function addPayment(expenseNo: string, form: FormData) {
   const amount = Number(form.get('amount'))
   const mode = form.get('payment_mode')
   const file = form.get('proof') as File
+  const addedByUserId = form.get('added_by_user_id') as string | null
+  const addedByName = (form.get('added_by_name') as string)?.trim() || null
 
   const exp = await supabaseService
     .from('expenses')
@@ -135,13 +151,19 @@ export async function addPayment(expenseNo: string, form: FormData) {
   const proofUrl =
     supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
 
-  const paymentIns = await supabaseService.from('expense_payments').insert({
+  const paymentData: Record<string, unknown> = {
     expense_id: exp.data.id,
     amount,
     payment_mode: mode,
     proof_url: proofUrl,
-    paid_date: new Date().toISOString()
-  })
+    paid_date: new Date().toISOString(),
+    added_by_name: addedByName
+  }
+  if (isValidUuid(addedByUserId)) {
+    paymentData.added_by_user_id = addedByUserId
+  }
+
+  const paymentIns = await supabaseService.from('expense_payments').insert(paymentData)
 
   if (paymentIns.error) {
     throw new Error(`Failed to save payment: ${paymentIns.error.message}`)

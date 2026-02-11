@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabaseClient'
-import DashboardContent from './DashboardContent'
+import { DashboardContent } from './DashboardContent'
 
 export const dynamic = 'force-dynamic'
 

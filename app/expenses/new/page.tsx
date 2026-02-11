@@ -21,6 +21,17 @@ type Vendor = {
   name: string
 }
 
+type User = {
+  id: string
+  name: string
+}
+
+const MOCK_USERS: User[] = [
+  { id: 'mock-1', name: 'Rajesh' },
+  { id: 'mock-2', name: 'Admin' },
+  { id: 'mock-3', name: 'Vineet' },
+]
+
 const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow duration-200"
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
 
@@ -29,6 +40,7 @@ export default function NewExpense() {
   const [sites, setSites] = useState<Site[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
+  const [users, setUsers] = useState<User[]>(MOCK_USERS)
   const [loadingMaster, setLoadingMaster] = useState(true)
 
   const [total, setTotal] = useState('')
@@ -105,6 +117,7 @@ export default function NewExpense() {
 
     setSaving(true)
     const formData = new FormData(e.currentTarget)
+    formData.set('added_by_name', users.find(u => u.id === formData.get('added_by_user_id'))?.name || '')
 
     try {
       const result = await createExpense(formData)
@@ -217,6 +230,20 @@ export default function NewExpense() {
                 className={inputClass}
                 required
               />
+            </div>
+
+            <div>
+              <label className={labelClass}>Added by</label>
+              <select
+                name="added_by_user_id"
+                className={inputClass}
+                required
+              >
+                <option value="">Choose user</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
             </div>
 
             <div>
