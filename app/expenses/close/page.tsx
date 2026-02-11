@@ -1,1 +1,3 @@
-export default function ClosePage() { return null }
+export default function ClosePage() {
+    return null;
+  }
