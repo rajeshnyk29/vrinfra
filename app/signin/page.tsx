@@ -180,11 +180,12 @@ function SignInForm() {
           </button>
         </form>
 
-        <div className="mt-4 space-y-3">
-          <div className="text-center">
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <div className="text-center mb-3">
             <button
+              type="button"
               onClick={() => setShowForgotPassword(true)}
-              className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline"
             >
               Forgot Password?
             </button>
