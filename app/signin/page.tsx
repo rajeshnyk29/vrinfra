@@ -34,7 +34,7 @@ export default function SignInPage() {
         return
       }
 
-      const redirect = new URLSearchParams(window.location.search).get('redirect') || '/'
+      const redirect = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') || '/' : '/'
       router.push(redirect)
       router.refresh()
     } catch (err: any) {
@@ -50,7 +50,7 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
-      const redirectUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+      const redirectUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${redirectUrl}/reset-password`
       })
@@ -181,8 +181,13 @@ export default function SignInPage() {
         <div className="mt-4 space-y-3">
           <button
             type="button"
-            onClick={() => setShowForgotPassword(true)}
+            onClick={() => {
+              console.log('Forgot password clicked')
+              setShowForgotPassword(true)
+            }}
             className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-md"
+            style={{ display: 'block' }}
+            data-testid="forgot-password-button"
           >
             🔑 FORGOT PASSWORD?
           </button>
