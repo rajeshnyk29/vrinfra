@@ -52,8 +52,9 @@ function SignInForm() {
     setLoading(true)
 
     try {
+      const redirectUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
+        redirectTo: `${redirectUrl}/reset-password`
       })
 
       if (resetError) {
@@ -179,13 +180,15 @@ function SignInForm() {
           </button>
         </form>
 
-        <div className="mt-4 space-y-2">
-          <button
-            onClick={() => setShowForgotPassword(true)}
-            className="w-full text-xs text-blue-600 hover:underline font-medium text-center"
-          >
-            Forgot Password?
-          </button>
+        <div className="mt-4 space-y-3">
+          <div className="text-center">
+            <button
+              onClick={() => setShowForgotPassword(true)}
+              className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium"
+            >
+              Forgot Password?
+            </button>
+          </div>
           <p className="text-xs text-slate-600 text-center">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-blue-600 hover:underline font-medium">Sign up</Link>
