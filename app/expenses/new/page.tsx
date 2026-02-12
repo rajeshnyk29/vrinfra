@@ -50,10 +50,10 @@ export default function NewExpense() {
   const [invoiceFileName, setInvoiceFileName] = useState('')
   const [paymentFileName, setPaymentFileName] = useState('')
 
-  const invoiceCamera = useRef<any>()
-  const invoiceGallery = useRef<any>()
-  const payCamera = useRef<any>()
-  const payGallery = useRef<any>()
+  const invoiceCamera = useRef<any>(null)
+const invoiceGallery = useRef<any>(null)
+const payCamera = useRef<any>(null)
+const payGallery = useRef<any>(null)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
