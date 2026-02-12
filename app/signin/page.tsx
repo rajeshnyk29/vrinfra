@@ -180,16 +180,14 @@ function SignInForm() {
           </button>
         </form>
 
-        <div className="mt-4 pt-3 border-t border-gray-200">
-          <div className="text-center mb-3">
-            <button
-              type="button"
-              onClick={() => setShowForgotPassword(true)}
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-            >
-              Forgot Password?
-            </button>
-          </div>
+        <div className="mt-4 space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowForgotPassword(true)}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-md"
+          >
+            🔑 FORGOT PASSWORD?
+          </button>
           <p className="text-xs text-slate-600 text-center">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="text-blue-600 hover:underline font-medium">Sign up</Link>
