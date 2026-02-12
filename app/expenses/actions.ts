@@ -8,11 +8,7 @@ function isValidUuid(id: string | null | undefined): boolean {
   return uuidRegex.test(id)
 }
 
-/* =========================
-   CREATE EXPENSE
-========================= */
 export async function createExpense(form: FormData) {
-
   const seq = await supabaseService
     .from('vr_sequence')
     .select('last_no')
@@ -107,6 +103,7 @@ export async function createExpense(form: FormData) {
       paid_date: new Date().toISOString(),
       added_by_name: addedByName
     }
+    
     if (isValidUuid(addedByUserId)) {
       paymentData.added_by_user_id = addedByUserId
     }
@@ -122,11 +119,7 @@ export async function createExpense(form: FormData) {
   return { success: true, expense_no }
 }
 
-/* =========================
-   ADD PAYMENT
-========================= */
 export async function addPayment(expenseNo: string, form: FormData) {
-
   const amount = Number(form.get('amount'))
   const mode = form.get('payment_mode')
   const file = form.get('proof') as File
@@ -159,6 +152,7 @@ export async function addPayment(expenseNo: string, form: FormData) {
     paid_date: new Date().toISOString(),
     added_by_name: addedByName
   }
+  
   if (isValidUuid(addedByUserId)) {
     paymentData.added_by_user_id = addedByUserId
   }

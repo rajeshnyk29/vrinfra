@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase'
+import { supabase } from '../../../lib/supabaseClient'
 import { createExpense } from '../actions'
 
 type Site = {
@@ -42,6 +42,7 @@ export default function NewExpense() {
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [users, setUsers] = useState<User[]>(MOCK_USERS)
   const [loadingMaster, setLoadingMaster] = useState(true)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const [total, setTotal] = useState('')
   const [paid, setPaid] = useState('')
@@ -51,17 +52,36 @@ export default function NewExpense() {
   const [paymentFileName, setPaymentFileName] = useState('')
 
   const invoiceCamera = useRef<any>(null)
-const invoiceGallery = useRef<any>(null)
-const payCamera = useRef<any>(null)
-const payGallery = useRef<any>(null)
+  const invoiceGallery = useRef<any>(null)
+  const payCamera = useRef<any>(null)
+  const payGallery = useRef<any>(null)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<{ expense_no: string; total: number; paid: number; balance: number } | null>(null)
 
   useEffect(() => {
-    loadMasterData()
+    checkAuth()
   }, [])
+
+  async function checkAuth() {
+    try {
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
+      
+      if (authError || !session) {
+        router.push('/signin?redirect=/expenses/new')
+        return
+      }
+
+      await loadMasterData()
+    } catch (e) {
+      console.error('Auth check failed:', e)
+      setError('Authentication failed. Please sign in again.')
+      router.push('/signin?redirect=/expenses/new')
+    } finally {
+      setCheckingAuth(false)
+    }
+  }
 
   async function loadMasterData() {
     try {
@@ -70,11 +90,17 @@ const payGallery = useRef<any>(null)
         supabase.from('categories').select('id, name').order('name'),
         supabase.from('vendors').select('id, name').order('name')
       ])
+
+      if (sitesRes.error) throw new Error(`Failed to load sites: ${sitesRes.error.message}`)
+      if (categoriesRes.error) throw new Error(`Failed to load categories: ${categoriesRes.error.message}`)
+      if (vendorsRes.error) throw new Error(`Failed to load vendors: ${vendorsRes.error.message}`)
+
       setSites(sitesRes.data || [])
       setCategories(categoriesRes.data || [])
       setVendors(vendorsRes.data || [])
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to load master data', e)
+      setError(e?.message || 'Failed to load data. Please refresh the page.')
     } finally {
       setLoadingMaster(false)
     }
@@ -141,6 +167,16 @@ const payGallery = useRef<any>(null)
     } finally {
       setSaving(false)
     }
+  }
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="text-lg text-slate-600">Loading...</div>
+        </div>
+      </div>
+    )
   }
 
   if (success) {
@@ -219,6 +255,13 @@ const payGallery = useRef<any>(null)
           <h1 className="text-lg font-bold text-slate-900">
             New Expense
           </h1>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+              <span>⚠️</span>
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -458,17 +501,10 @@ const payGallery = useRef<any>(null)
               />
             </div>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
-                <span>⚠️</span>
-                {error}
-              </div>
-            )}
-
             <button
               type="submit"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
-              disabled={saving}
+              disabled={saving || loadingMaster}
             >
               {saving ? 'Saving Expense...' : 'Save Expense'}
             </button>
