@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabaseClient'
 const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
 
-function SignInForm() {
+export default function SignInPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/'
@@ -195,13 +195,5 @@ function SignInForm() {
         </div>
       </div>
     </div>
-  )
-}
-
-export default function SignInPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <SignInForm />
-    </Suspense>
   )
 }
