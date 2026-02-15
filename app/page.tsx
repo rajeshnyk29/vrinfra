@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import ProfileButton from './components/ProfileButton'
+import { getMyRole } from './actions'
 
 export default function HomePage() {
   const router = useRouter()
+  const [orgName, setOrgName] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     total: 0,
@@ -27,15 +30,21 @@ export default function HomePage() {
           return
         }
 
-        const { data: expenses } = await supabase
-          .from('expenses')
-          .select('total_amount, paid_amount, balance_amount, status')
+        const [orgRes, expensesRes, role] = await Promise.all([
+          supabase.from('organizations').select('name').single(),
+          supabase.from('expenses').select('total_amount, paid_amount, balance_amount, status'),
+          getMyRole()
+        ])
 
-        const total = expenses?.length ?? 0
-        const open = expenses?.filter(e => e.status === 'OPEN').length ?? 0
-        const closed = expenses?.filter(e => e.status === 'CLOSED').length ?? 0
-        const totalAmount = expenses?.reduce((sum, e) => sum + (e.total_amount ?? 0), 0) ?? 0
-        const totalPaid = expenses?.reduce((sum, e) => sum + (e.paid_amount ?? 0), 0) ?? 0
+        setOrgName(orgRes.data?.name ?? null)
+        setUserRole(role ?? null)
+
+        const expenses = expensesRes.data ?? []
+        const total = expenses.length
+        const open = expenses.filter((e: { status: string }) => e.status === 'OPEN').length
+        const closed = expenses.filter((e: { status: string }) => e.status === 'CLOSED').length
+        const totalAmount = expenses.reduce((sum: number, e: { total_amount?: number }) => sum + (e.total_amount ?? 0), 0)
+        const totalPaid = expenses.reduce((sum: number, e: { paid_amount?: number }) => sum + (e.paid_amount ?? 0), 0)
 
         setStats({ total, open, closed, totalAmount, totalPaid })
       } catch {
@@ -56,6 +65,8 @@ export default function HomePage() {
     )
   }
 
+  const isMasterLocked = userRole !== 'admin'
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
@@ -64,7 +75,7 @@ export default function HomePage() {
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-              VR Infra Expense Manager
+              Expense Manager
             </h1>
             <p className="text-slate-400 text-sm mt-1">
               Manage Expenses, track payments and view analytics
@@ -106,21 +117,42 @@ export default function HomePage() {
             </span>
           </Link>
 
-          <Link
-            href="/master"
-            className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/10"
-          >
-            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4 group-hover:bg-blue-500/30 transition-colors">
-              <span className="text-2xl">📁</span>
+          {isMasterLocked ? (
+            <div
+              className="block p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 opacity-75 cursor-not-allowed"
+              title="Only organization admin can access"
+            >
+              <div className="w-12 h-12 rounded-xl bg-slate-500/20 flex items-center justify-center mb-4">
+                <span className="text-2xl">🔒</span>
+              </div>
+              <h2 className="text-lg font-bold text-slate-400 mb-1 flex items-center gap-2">
+                Master Data
+                <span className="text-sm font-normal">(admin only)</span>
+              </h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Categories, Sites, Vendors, Users
+              </p>
+              <span className="text-xs text-slate-500">
+                Only organization admin can access
+              </span>
             </div>
-            <h2 className="text-lg font-bold text-white mb-1">Master Data</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Categories, Sites, Vendors, Users
-            </p>
-            <span className="text-xs text-blue-400 font-medium group-hover:underline">
-              Manage Master →
-            </span>
-          </Link>
+          ) : (
+            <Link
+              href="/master"
+              className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/10"
+            >
+              <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4 group-hover:bg-blue-500/30 transition-colors">
+                <span className="text-2xl">📁</span>
+              </div>
+              <h2 className="text-lg font-bold text-white mb-1">Master Data</h2>
+              <p className="text-sm text-slate-400 mb-4">
+                Categories, Sites, Vendors, Users
+              </p>
+              <span className="text-xs text-blue-400 font-medium group-hover:underline">
+                Manage Master →
+              </span>
+            </Link>
+          )}
 
           <Link
             href="/analytics"

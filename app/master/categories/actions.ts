@@ -3,16 +3,33 @@
 import { supabaseService } from '../../../lib/supabase'
 import { getCurrentUserOrgId } from '../../../lib/auth'
 
-export async function addSite(name: string) {
+export async function getCategories() {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return []
+
+  const { data, error } = await supabaseService
+    .from('categories')
+    .select('id, name')
+    .eq('org_id', orgId)
+    .order('name')
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data || []
+}
+
+export async function addCategory(name: string) {
   if (!name.trim()) {
-    throw new Error('Site name is required')
+    throw new Error('Category name is required')
   }
 
   const orgId = await getCurrentUserOrgId()
   if (!orgId) throw new Error('Not signed in or organization not found')
 
   const { data, error } = await supabaseService
-    .from('sites')
+    .from('categories')
     .insert({ name: name.trim(), org_id: orgId })
     .select('id, name')
     .single()
@@ -24,14 +41,14 @@ export async function addSite(name: string) {
   return data
 }
 
-export async function deleteSite(id: string) {
+export async function deleteCategory(id: string) {
   const orgId = await getCurrentUserOrgId()
   if (!orgId) throw new Error('Not signed in or organization not found')
 
   const { count, error: countError } = await supabaseService
     .from('expenses')
     .select('*', { count: 'exact', head: true })
-    .eq('site_id', id)
+    .eq('category_id', id)
     .eq('org_id', orgId)
 
   if (countError) {
@@ -40,12 +57,12 @@ export async function deleteSite(id: string) {
 
   if (count && count > 0) {
     throw new Error(
-      `Cannot delete site. ${count} expense(s) use this site. Reassign those expenses to another site first.`
+      `Cannot delete category. ${count} expense(s) use this category. Reassign those expenses first.`
     )
   }
 
   const { error } = await supabaseService
-    .from('sites')
+    .from('categories')
     .delete()
     .eq('id', id)
     .eq('org_id', orgId)
@@ -53,21 +70,4 @@ export async function deleteSite(id: string) {
   if (error) {
     throw new Error(error.message)
   }
-}
-
-export async function getSites() {
-  const orgId = await getCurrentUserOrgId()
-  if (!orgId) return []
-
-  const { data, error } = await supabaseService
-    .from('sites')
-    .select('id, name')
-    .eq('org_id', orgId)
-    .order('name')
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  return data || []
 }

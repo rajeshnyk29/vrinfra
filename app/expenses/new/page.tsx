@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
 import { createExpense } from '../actions'
+import { getUsers } from '../../master/users/actions'
 
 type Site = {
   id: string
@@ -26,12 +27,6 @@ type User = {
   name: string
 }
 
-const MOCK_USERS: User[] = [
-  { id: 'mock-1', name: 'Rajesh' },
-  { id: 'mock-2', name: 'Admin' },
-  { id: 'mock-3', name: 'Vineet' },
-]
-
 const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow duration-200"
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
 
@@ -40,7 +35,7 @@ export default function NewExpense() {
   const [sites, setSites] = useState<Site[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
-  const [users, setUsers] = useState<User[]>(MOCK_USERS)
+  const [users, setUsers] = useState<User[]>([])
   const [loadingMaster, setLoadingMaster] = useState(true)
   const [checkingAuth, setCheckingAuth] = useState(true)
 
@@ -85,10 +80,11 @@ export default function NewExpense() {
 
   async function loadMasterData() {
     try {
-      const [sitesRes, categoriesRes, vendorsRes] = await Promise.all([
+      const [sitesRes, categoriesRes, vendorsRes, usersList] = await Promise.all([
         supabase.from('sites').select('id, name').order('name'),
         supabase.from('categories').select('id, name').order('name'),
-        supabase.from('vendors').select('id, name').order('name')
+        supabase.from('vendors').select('id, name').order('name'),
+        getUsers()
       ])
 
       if (sitesRes.error) throw new Error(`Failed to load sites: ${sitesRes.error.message}`)
@@ -98,6 +94,7 @@ export default function NewExpense() {
       setSites(sitesRes.data || [])
       setCategories(categoriesRes.data || [])
       setVendors(vendorsRes.data || [])
+      setUsers(Array.isArray(usersList) ? usersList : [])
     } catch (e: any) {
       console.error('Failed to load master data', e)
       setError(e?.message || 'Failed to load data. Please refresh the page.')
@@ -287,6 +284,9 @@ export default function NewExpense() {
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
+              {!loadingMaster && users.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">Add users in Master → Users, then have them sign in.</p>
+              )}
             </div>
 
             <div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabase'
-import { inviteUser } from './actions'
+import { inviteUser, deleteUser } from './actions'
 
 type User = { id: string; email: string; name: string | null; role: string | null }
 
@@ -13,6 +13,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     loadUsers()
@@ -48,9 +49,14 @@ export default function UsersPage() {
     loadUsers()
   }
 
-  async function deleteUser(id: string) {
+  async function handleDeleteUser(id: string) {
     if (!confirm('Delete this invite/user?')) return
-    await supabase.from('users').delete().eq('id', id)
+    setDeleteError(null)
+    const result = await deleteUser(id)
+    if (!result.ok) {
+      setDeleteError(result.error || 'Failed to delete')
+      return
+    }
     loadUsers()
   }
 
@@ -90,19 +96,19 @@ export default function UsersPage() {
 
         {inviteSuccess && (
           <div className="flex items-center gap-2 text-xs text-emerald-600">
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white text-[10px]">
-              ✓
-            </span>
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white text-[10px]">✓</span>
             <span>Invitation sent.</span>
           </div>
         )}
 
         {inviteError && (
-          <div className="text-xs text-red-600">
-            {inviteError}
-          </div>
+          <div className="text-xs text-red-600">{inviteError}</div>
         )}
       </form>
+
+      {deleteError && (
+        <div className="text-xs text-red-600 mb-2">{deleteError}</div>
+      )}
 
       <ul className="space-y-2">
         {users.map(u => (
@@ -119,7 +125,7 @@ export default function UsersPage() {
               )}
             </div>
             <button
-              onClick={() => deleteUser(u.id)}
+              onClick={() => handleDeleteUser(u.id)}
               className="text-red-600 text-xs"
             >
               Delete

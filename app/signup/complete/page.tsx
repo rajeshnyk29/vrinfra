@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../../lib/supabaseClient'
@@ -8,6 +8,8 @@ import { completeAccount } from '../actions'
 
 const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
+
+const COMPLETE_TIMEOUT_MS = 20000
 
 export default function CompleteAccountPage() {
   const router = useRouter()
@@ -18,6 +20,7 @@ export default function CompleteAccountPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     async function loadSession() {
@@ -34,6 +37,12 @@ export default function CompleteAccountPage() {
     }
     loadSession()
   }, [router])
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -56,6 +65,16 @@ export default function CompleteAccountPage() {
     }
 
     setLoading(true)
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null
+      setLoading(false)
+      setError('Request timed out. Please try again or go to Sign In and sign in with your new password.')
+    }, COMPLETE_TIMEOUT_MS)
 
     try {
       const { error: updateError } = await supabase.auth.updateUser({
@@ -64,24 +83,42 @@ export default function CompleteAccountPage() {
       })
 
       if (updateError) {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current)
+          timeoutRef.current = null
+        }
         setError(updateError.message)
         setLoading(false)
         return
       }
 
       const result = await completeAccount(trimmedName)
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+
       if (!result.ok) {
         setError(result.error || 'Failed to save profile')
         setLoading(false)
         return
       }
 
-      router.replace('/')
-      router.refresh()
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong')
-    } finally {
       setLoading(false)
+      window.location.href = '/'
+    } catch (err: any) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      setError(err?.message || 'Something went wrong')
+      setLoading(false)
+    } finally {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
     }
   }
 
@@ -166,7 +203,7 @@ export default function CompleteAccountPage() {
         </form>
 
         <p className="mt-4 text-xs text-slate-600 text-center">
-          <Link href="/signin" className="text-blue-600 hover:underline font-medium">Back to Sign In</Link>
+          <Link href="/signin" className="text-blue-600 underline font-medium">Back to Sign In</Link>
         </p>
       </div>
     </div>

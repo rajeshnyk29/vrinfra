@@ -1,6 +1,7 @@
 'use server'
 
 import { supabaseService } from '../../lib/supabase'
+import { getCurrentUserOrgId } from '../../lib/auth'
 
 function isValidUuid(id: string | null | undefined): boolean {
   if (!id || typeof id !== 'string') return false
@@ -9,10 +10,13 @@ function isValidUuid(id: string | null | undefined): boolean {
 }
 
 export async function createExpense(form: FormData) {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) throw new Error('Not signed in or organization not found')
+
   const seq = await supabaseService
     .from('vr_sequence')
     .select('last_no')
-    .eq('id', 1)
+    .eq('org_id', orgId)
     .single()
 
   const last = seq.data?.last_no ?? 1000
@@ -22,7 +26,7 @@ export async function createExpense(form: FormData) {
   await supabaseService
     .from('vr_sequence')
     .update({ last_no: next })
-    .eq('id', 1)
+    .eq('org_id', orgId)
 
   const total = Number(form.get('total_amount'))
   const paid = Number(form.get('paid_amount'))
@@ -73,6 +77,7 @@ export async function createExpense(form: FormData) {
   const vendorId = form.get('vendor_id') as string
 
   const ins = await supabaseService.from('expenses').insert({
+    org_id: orgId,
     expense_no,
     expense_date: form.get('expense_date'),
     site_id: form.get('site_id'),
@@ -96,6 +101,7 @@ export async function createExpense(form: FormData) {
     const addedByName = (form.get('added_by_name') as string)?.trim() || null
 
     const paymentData: Record<string, unknown> = {
+      org_id: orgId,
       expense_id: ins.data.id,
       amount: paid,
       payment_mode: paymentMode,
@@ -103,7 +109,7 @@ export async function createExpense(form: FormData) {
       paid_date: new Date().toISOString(),
       added_by_name: addedByName
     }
-    
+
     if (isValidUuid(addedByUserId)) {
       paymentData.added_by_user_id = addedByUserId
     }
@@ -120,6 +126,9 @@ export async function createExpense(form: FormData) {
 }
 
 export async function addPayment(expenseNo: string, form: FormData) {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) throw new Error('Not signed in or organization not found')
+
   const amount = Number(form.get('amount'))
   const mode = form.get('payment_mode')
   const file = form.get('proof') as File
@@ -128,8 +137,9 @@ export async function addPayment(expenseNo: string, form: FormData) {
 
   const exp = await supabaseService
     .from('expenses')
-    .select('id, total_amount, paid_amount, balance_amount')
+    .select('id, total_amount, paid_amount, balance_amount, org_id')
     .eq('expense_no', expenseNo)
+    .eq('org_id', orgId)
     .single()
 
   if (!exp.data) throw new Error('Expense not found')
@@ -145,6 +155,7 @@ export async function addPayment(expenseNo: string, form: FormData) {
     supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
 
   const paymentData: Record<string, unknown> = {
+    org_id: exp.data.org_id,
     expense_id: exp.data.id,
     amount,
     payment_mode: mode,
@@ -152,7 +163,7 @@ export async function addPayment(expenseNo: string, form: FormData) {
     paid_date: new Date().toISOString(),
     added_by_name: addedByName
   }
-  
+
   if (isValidUuid(addedByUserId)) {
     paymentData.added_by_user_id = addedByUserId
   }
@@ -174,6 +185,7 @@ export async function addPayment(expenseNo: string, form: FormData) {
       status: newBalance === 0 ? 'CLOSED' : 'OPEN'
     })
     .eq('id', exp.data.id)
+    .eq('org_id', orgId)
 
   return { success: true }
 }

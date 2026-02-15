@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { supabase } from '../../../../lib/supabaseClient'
+import { createServerSupabase } from '../../../../lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { PrintButton } from './PrintButton'
 
@@ -15,6 +15,10 @@ function fmtDate(s: string | null | undefined) {
 export default async function PrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: expenseNo } = await params
   if (!expenseNo) redirect('/dashboard')
+
+  const supabase = await createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/signin')
 
   const expRes = await supabase
     .from('expenses')

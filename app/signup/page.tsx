@@ -13,16 +13,29 @@ export default function SignUpPage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [organizationName, setOrganizationName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [requireOrgName, setRequireOrgName] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setMessage(null)
+
+    const { allowed, reason, requireOrgName: needOrg } = await checkCanSignUp(email)
+    if (!allowed) {
+      setError(reason)
+      return
+    }
+    setRequireOrgName(!!needOrg)
+    if (needOrg && !organizationName.trim()) {
+      setError('Organization name is required for first signup')
+      return
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -34,12 +47,6 @@ export default function SignUpPage() {
       return
     }
 
-    const { allowed, reason } = await checkCanSignUp(email)
-    if (!allowed) {
-      setError(reason)
-      return
-    }
-
     setLoading(true)
 
     try {
@@ -47,7 +54,10 @@ export default function SignUpPage() {
         email,
         password,
         options: {
-          data: { name }
+          data: {
+            name,
+            ...(organizationName.trim() && { organization_name: organizationName.trim() })
+          }
         }
       })
 
@@ -79,7 +89,7 @@ export default function SignUpPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-6 w-full max-w-md">
         <h1 className="text-xl font-bold text-slate-900 mb-1">Create Account</h1>
-        <p className="text-xs text-slate-600 mb-4">Sign up to access VR Infra Expense</p>
+        <p className="text-xs text-slate-600 mb-4">Sign up to access Infra Expense Manager</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -91,6 +101,17 @@ export default function SignUpPage() {
               placeholder="e.g. Rajesh Nayak"
               className={inputClass}
               required
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>Organization name</label>
+            <input
+              type="text"
+              value={organizationName}
+              onChange={e => setOrganizationName(e.target.value)}
+              placeholder="e.g. VR Infra, SNC Infra"
+              className={inputClass}
             />
           </div>
 
@@ -154,7 +175,7 @@ export default function SignUpPage() {
 
         <p className="mt-4 text-xs text-slate-600 text-center">
           Already have an account?{' '}
-          <Link href="/signin" className="text-blue-600 hover:underline font-medium">Sign in</Link>
+          <Link href="/signin" className="text-blue-600 underline font-medium">Sign in</Link>
         </p>
       </div>
     </div>

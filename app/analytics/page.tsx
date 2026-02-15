@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supabaseClient'
+import { createServerSupabase } from '../../lib/supabase-server'
 import AnalyticsContent from './AnalyticsContent'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +17,17 @@ type ExpenseRow = {
 }
 
 export default async function AnalyticsPage() {
+  const supabase = await createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return (
+      <div className="p-4">
+        <h1 className="text-xl font-bold mb-3">Analytics</h1>
+        <div className="text-red-600">Please sign in to view analytics.</div>
+      </div>
+    )
+  }
+
   const { data: expenses, error: expError } = await supabase
     .from('expenses')
     .select('id, expense_date, created_at, site_id, category_id, category, total_amount')

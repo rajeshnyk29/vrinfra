@@ -1,14 +1,9 @@
 import { supabaseService } from '../../../../lib/supabase'
 import { redirect } from 'next/navigation'
 import { AddPaymentForm } from './AddPaymentForm'
+import { getUsers } from '../../../master/users/actions'
 
 export const dynamic = 'force-dynamic'
-
-const MOCK_USERS = [
-  { id: 'mock-1', name: 'Rajesh' },
-  { id: 'mock-2', name: 'Admin' },
-  { id: 'mock-3', name: 'Vineet' },
-]
 
 export default async function AddPaymentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: expenseNo } = await params
@@ -31,10 +26,12 @@ export default async function AddPaymentPage({ params }: { params: Promise<{ id:
     )
   }
 
+  const users = await getUsers()
+
   return (
     <AddPaymentForm
       expense={expRes.data}
-      users={MOCK_USERS}
+      users={users}
       expenseNo={expenseNo}
     />
   )

@@ -136,7 +136,7 @@ export default function SignInPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-6 w-full max-w-md">
         <h1 className="text-xl font-bold text-slate-900 mb-1">Sign In</h1>
-        <p className="text-xs text-slate-600 mb-4">Sign in to access VR Infra Expense</p>
+        <p className="text-xs text-slate-600 mb-4">Sign in to access Infra Expense Manager</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -1,8 +1,29 @@
 'use server'
 
 import { supabaseService } from '../../../lib/supabase'
+import { getCurrentUserOrgId } from '../../../lib/auth'
 
 type InviteResult = { ok: boolean; error?: string }
+
+export async function getUsers(): Promise<{ id: string; name: string }[]> {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return []
+
+  const { data, error } = await supabaseService
+    .from('users')
+    .select('id, name, email')
+    .eq('org_id', orgId)
+    .order('name')
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data || []).map((u: { id: string; name: string | null; email: string }) => ({
+    id: u.id,
+    name: (u.name && u.name.trim()) || u.email || 'Unknown'
+  }))
+}
 
 export async function inviteUser(email: string): Promise<InviteResult> {
   const normalizedEmail = email.trim().toLowerCase()
@@ -16,10 +37,23 @@ export async function inviteUser(email: string): Promise<InviteResult> {
     return { ok: false, error: 'Please enter a valid email' }
   }
 
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) {
+    return { ok: false, error: 'Not signed in or organization not found' }
+  }
+
+  const { data: org } = await supabaseService
+    .from('organizations')
+    .select('name')
+    .eq('id', orgId)
+    .single()
+
+  const orgName = org?.name?.trim() || 'our organization'
+
   const { error: upsertError } = await supabaseService
     .from('users')
     .upsert(
-      { email: normalizedEmail },
+      { email: normalizedEmail, org_id: orgId, role: 'user' },
       { onConflict: 'email' }
     )
 
@@ -34,7 +68,10 @@ export async function inviteUser(email: string): Promise<InviteResult> {
     await supabaseService.auth.admin.inviteUserByEmail(
       normalizedEmail,
       {
-        redirectTo: `${redirectBase}/signup/invite`
+        redirectTo: `${redirectBase}/signup/invite`,
+        data: {
+          organization_name: orgName
+        }
       }
     )
 
@@ -42,5 +79,23 @@ export async function inviteUser(email: string): Promise<InviteResult> {
     return { ok: false, error: inviteError.message }
   }
 
+  return { ok: true }
+}
+
+export async function deleteUser(id: string): Promise<{ ok: boolean; error?: string }> {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) {
+    return { ok: false, error: 'Not signed in or organization not found' }
+  }
+
+  const { error } = await supabaseService
+    .from('users')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
   return { ok: true }
 }

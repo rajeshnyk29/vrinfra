@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supabaseClient'
+import { createServerSupabase } from '../../lib/supabase-server'
 import { DashboardContent } from './DashboardContent'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +25,17 @@ type Category = { id: string; name: string }
 type Vendor = { id: string; name: string }
 
 export default async function Dashboard() {
+  const supabase = await createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return (
+      <div className="p-4">
+        <h1 className="text-xl font-bold mb-3">Dashboard</h1>
+        <div className="text-red-600">Please sign in to view the dashboard.</div>
+      </div>
+    )
+  }
+
   const { data: expenses, error } = await supabase
     .from('expenses')
     .select('*')
