@@ -244,11 +244,11 @@ export default function NewExpense() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-3 sm:p-4">
       <div className="max-w-md mx-auto">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-2 text-xs text-slate-600 hover:text-slate-900 mb-3 font-medium transition-colors"
+      <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 font-medium transition-colors"
         >
-          ← Back to Dashboard
+          ← Back to Home
         </Link>
 
         <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">

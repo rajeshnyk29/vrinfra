@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { supabase } from '../../../../lib/supabaseClient'
 import { redirect } from 'next/navigation'
 import { PrintButton } from './PrintButton'
@@ -68,6 +69,12 @@ export default async function PrintPage({ params }: { params: Promise<{ id: stri
       `}</style>
       <div className="no-print p-4 bg-gray-100 min-h-screen">
         <div className="max-w-2xl mx-auto bg-white rounded shadow p-4">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 block font-medium"
+          >
+            ← Back to Dashboard
+          </Link>
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-lg font-bold">Print Preview – {expenseNo}</h1>
             <PrintButton />

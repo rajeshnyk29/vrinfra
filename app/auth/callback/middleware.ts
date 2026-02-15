@@ -5,8 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Added '/signup/invite' so invite links can be processed without redirecting to /signin
-const publicPaths = ['/', '/signup', '/signup/invite', '/signin', '/auth/callback']
+const publicPaths = ['/', '/signup', '/signup/invite', '/signup/complete', '/signin', '/auth/callback', '/reset-password']
 const masterPaths = ['/master', '/master/categories', '/master/sites', '/master/vendors', '/master/users']
 
 export async function middleware(request: NextRequest) {

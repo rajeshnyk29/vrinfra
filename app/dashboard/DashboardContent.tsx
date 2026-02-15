@@ -257,6 +257,12 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
 
   return (
     <div className="p-4 pb-8">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 block font-medium"
+      >
+        ← Back to Home
+      </Link>
       <h1 className="text-xl font-bold mb-3">Dashboard</h1>
 
       <div className="mb-4 space-y-3">

@@ -33,7 +33,6 @@ export default function InviteSignUpPage() {
           return
         }
 
-        // Optional: ensure this is actually an invite link
         if (type && type !== 'invite') {
           setStatus('error')
           setMessage('This link is not a valid invitation link.')
@@ -57,14 +56,12 @@ export default function InviteSignUpPage() {
           return
         }
 
-        // At this point the user should be logged in
         setStatus('success')
-        setMessage('Your invitation has been accepted! Redirecting to the app...')
+        setMessage('Your invitation has been accepted! Redirecting to complete your account...')
 
-        // Give the user a brief moment to see the message, then redirect
         setTimeout(() => {
           if (!cancelled) {
-            router.replace('/')
+            router.replace('/signup/complete')
           }
         }, 1500)
       } catch (err: any) {

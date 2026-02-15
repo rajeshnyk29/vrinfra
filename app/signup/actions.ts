@@ -1,6 +1,7 @@
 'use server'
 
 import { supabaseService } from '../../lib/supabase'
+import { createServerSupabase } from '../../lib/supabase-server'
 
 export async function checkCanSignUp(email: string): Promise<{ allowed: boolean; reason?: string }> {
   const normalizedEmail = email.trim().toLowerCase()
@@ -27,4 +28,31 @@ export async function checkCanSignUp(email: string): Promise<{ allowed: boolean;
   }
 
   return { allowed: true }
+}
+
+export type CompleteAccountResult = { ok: boolean; error?: string }
+
+export async function completeAccount(name: string): Promise<CompleteAccountResult> {
+  const trimmed = name?.trim()
+  if (!trimmed) {
+    return { ok: false, error: 'Name is required' }
+  }
+
+  const supabase = await createServerSupabase()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { ok: false, error: 'Not signed in' }
+  }
+
+  const { error } = await supabaseService
+    .from('users')
+    .update({ name: trimmed })
+    .eq('auth_user_id', user.id)
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  return { ok: true }
 }

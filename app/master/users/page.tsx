@@ -56,8 +56,8 @@ export default function UsersPage() {
 
   return (
     <div className="p-4 max-w-md mx-auto">
-      <Link href="/master" className="text-sm text-blue-600 mb-2 block">
-        ← Master Data
+      <Link href="/master" className="text-sm text-blue-600 hover:text-blue-800 mb-2 block font-medium">
+        ← Back to Master Data
       </Link>
 
       <h1 className="text-xl font-bold mb-2">Users</h1>

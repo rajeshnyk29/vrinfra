@@ -19,26 +19,30 @@ export default function HomePage() {
 
   useEffect(() => {
     async function checkAuthAndLoadStats() {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (!session) {
+          router.push('/signin')
+          return
+        }
+
+        const { data: expenses } = await supabase
+          .from('expenses')
+          .select('total_amount, paid_amount, balance_amount, status')
+
+        const total = expenses?.length ?? 0
+        const open = expenses?.filter(e => e.status === 'OPEN').length ?? 0
+        const closed = expenses?.filter(e => e.status === 'CLOSED').length ?? 0
+        const totalAmount = expenses?.reduce((sum, e) => sum + (e.total_amount ?? 0), 0) ?? 0
+        const totalPaid = expenses?.reduce((sum, e) => sum + (e.paid_amount ?? 0), 0) ?? 0
+
+        setStats({ total, open, closed, totalAmount, totalPaid })
+      } catch {
         router.push('/signin')
-        return
+      } finally {
+        setLoading(false)
       }
-
-      // Load stats
-      const { data: expenses } = await supabase
-        .from('expenses')
-        .select('total_amount, paid_amount, balance_amount, status')
-
-      const total = expenses?.length ?? 0
-      const open = expenses?.filter(e => e.status === 'OPEN').length ?? 0
-      const closed = expenses?.filter(e => e.status === 'CLOSED').length ?? 0
-      const totalAmount = expenses?.reduce((sum, e) => sum + (e.total_amount ?? 0), 0) ?? 0
-      const totalPaid = expenses?.reduce((sum, e) => sum + (e.paid_amount ?? 0), 0) ?? 0
-
-      setStats({ total, open, closed, totalAmount, totalPaid })
-      setLoading(false)
     }
 
     checkAuthAndLoadStats()
@@ -54,7 +58,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900">
-      {/* Subtle grid pattern overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
 
       <div className="relative p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
@@ -71,7 +74,6 @@ export default function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          {/* Create New Expense Card */}
           <Link
             href="/expenses/new"
             className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-emerald-500/10"
@@ -88,7 +90,6 @@ export default function HomePage() {
             </span>
           </Link>
 
-          {/* Dashboard Card */}
           <Link
             href="/dashboard"
             className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-indigo-500/10"
@@ -105,7 +106,6 @@ export default function HomePage() {
             </span>
           </Link>
 
-          {/* Master Data Card */}
           <Link
             href="/master"
             className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/10"
@@ -122,7 +122,6 @@ export default function HomePage() {
             </span>
           </Link>
 
-          {/* Analytics Card */}
           <Link
             href="/analytics"
             className="group block p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/10 hover:bg-white/15 hover:border-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-violet-500/10"

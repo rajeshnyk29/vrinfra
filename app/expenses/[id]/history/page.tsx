@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { supabase } from '../../../../lib/supabaseClient'
 import { supabaseService } from '../../../../lib/supabase'
 
@@ -69,6 +70,12 @@ export default async function Page(props: any) {
 
   return (
     <div className="p-4 max-w-md mx-auto">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 block font-medium"
+      >
+        ← Back to Dashboard
+      </Link>
       <h1 className="text-xl font-bold mb-4">Payment History – {expenseNo}</h1>
 
       {error && (
