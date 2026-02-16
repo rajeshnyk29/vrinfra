@@ -39,7 +39,7 @@ export default function SitesPage() {
       await loadSites()
     } catch (err: any) {
       console.error('Error adding site:', err)
-      setError(err.message || 'Failed to add site')
+      setError(err?.message || 'Failed to add site')
     } finally {
       setSaving(false)
     }
@@ -55,7 +55,12 @@ export default function SitesPage() {
       await loadSites()
     } catch (err: any) {
       console.error('Error deleting site:', err)
-      setError(err.message || 'Failed to delete site')
+      const msg = err?.message || err?.toString() || 'Failed to delete site'
+      if (msg.includes('foreign key') || msg.includes('constraint')) {
+        setError('Cannot delete site. This site is being used by one or more expenses. Reassign those expenses to another site first.')
+      } else {
+        setError(msg)
+      }
     }
   }
 

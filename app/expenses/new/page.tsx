@@ -14,11 +14,20 @@ type User = { id: string; name: string }
 
 const inputClass = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow duration-200"
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1"
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
 function roundMoney(n: number | string): number {
   const x = Number(n)
   if (Number.isNaN(x)) return 0
   return Math.round(x * 100) / 100
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
 export default function NewExpense() {
@@ -33,11 +42,14 @@ export default function NewExpense() {
   const [paid, setPaid] = useState('')
   const [paymentMode, setPaymentMode] = useState('Cash')
   const [invoiceFileName, setInvoiceFileName] = useState('')
+  const [invoiceFileSize, setInvoiceFileSize] = useState<number>(0)
   const [paymentFileName, setPaymentFileName] = useState('')
+  const [paymentFileSize, setPaymentFileSize] = useState<number>(0)
   const invoiceCamera = useRef<any>(null)
   const invoiceGallery = useRef<any>(null)
   const payCamera = useRef<any>(null)
   const payGallery = useRef<any>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<{ expense_no: string; total: number; paid: number; balance: number } | null>(null)
@@ -94,16 +106,84 @@ export default function NewExpense() {
 
   function handleTotalChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
-    if (v === '' || v === '-') { setTotal(v); return }
-    const n = roundMoney(v)
-    setTotal(Number.isNaN(Number(v)) ? v : String(n))
+    // Allow empty string, minus sign, or valid number input
+    if (v === '' || v === '-') { 
+      setTotal(v)
+      return 
+    }
+    // Only validate that it's a number, don't round while typing
+    const num = Number(v)
+    if (!Number.isNaN(num)) {
+      setTotal(v) // Keep the raw input value
+    } else {
+      // If invalid, keep previous value
+      return
+    }
+  }
+
+  function handleTotalBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const v = e.target.value
+    if (v && v !== '-') {
+      const rounded = roundMoney(v)
+      setTotal(String(rounded))
+    }
   }
 
   function handlePaidChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
-    if (v === '' || v === '-') { setPaid(v); return }
-    const n = roundMoney(v)
-    setPaid(Number.isNaN(Number(v)) ? v : String(n))
+    // Allow empty string, minus sign, or valid number input
+    if (v === '' || v === '-') { 
+      setPaid(v)
+      return 
+    }
+    // Only validate that it's a number, don't round while typing
+    const num = Number(v)
+    if (!Number.isNaN(num)) {
+      setPaid(v) // Keep the raw input value
+    } else {
+      // If invalid, keep previous value
+      return
+    }
+  }
+
+  function handlePaidBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const v = e.target.value
+    if (v && v !== '-') {
+      const rounded = roundMoney(v)
+      setPaid(String(rounded))
+    }
+  }
+
+  function handleInvoiceFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`Invoice file is too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}. Please compress the image or use a smaller file.`)
+        e.target.value = ''
+        setInvoiceFileName('')
+        setInvoiceFileSize(0)
+        return
+      }
+      setInvoiceFileName(file.name)
+      setInvoiceFileSize(file.size)
+      setError(null)
+    }
+  }
+
+  function handlePaymentFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`Payment proof file is too large (${formatFileSize(file.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}. Please compress the image or use a smaller file.`)
+        e.target.value = ''
+        setPaymentFileName('')
+        setPaymentFileSize(0)
+        return
+      }
+      setPaymentFileName(file.name)
+      setPaymentFileSize(file.size)
+      setError(null)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -115,27 +195,58 @@ export default function NewExpense() {
     if (paidNum > totalNum) { setError('Paid amount cannot exceed total amount'); return }
     if (!invoiceFileName) { setError('Invoice proof is required. Please upload a photo or select from gallery.'); return }
     if (paidNum > 0 && !paymentFileName) { setError('Payment proof is required when paid amount is greater than 0.'); return }
-    setSaving(true)
+    
+    // Validate file sizes before submission
     const formData = new FormData(e.currentTarget)
+    const invoiceFile = formData.get('invoice') as File
+    const paymentFile = formData.get('payment_proof') as File
+    
+    if (invoiceFile && invoiceFile.size > MAX_FILE_SIZE) {
+      setError(`Invoice file is too large (${formatFileSize(invoiceFile.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`)
+      return
+    }
+    
+    if (paymentFile && paymentFile.size > MAX_FILE_SIZE) {
+      setError(`Payment proof file is too large (${formatFileSize(paymentFile.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`)
+      return
+    }
+    
+    setSaving(true)
     formData.set('total_amount', String(totalNum))
     formData.set('paid_amount', String(paidNum))
     formData.set('added_by_name', users.find(u => u.id === formData.get('added_by_user_id'))?.name || '')
     try {
       const result = await createExpense(formData)
       if (result.success && result.expense_no) {
-        setSuccess({ expense_no: result.expense_no, total: totalNum, paid: paidNum, balance })
-        e.currentTarget.reset()
+        // Reset form before setting success state
+        if (formRef.current) {
+          formRef.current.reset()
+        }
         setTotal('')
         setPaid('')
         setPaymentMode('Cash')
         setInvoiceFileName('')
+        setInvoiceFileSize(0)
         setPaymentFileName('')
+        setPaymentFileSize(0)
+        setSuccess({ expense_no: result.expense_no, total: totalNum, paid: paidNum, balance })
       } else {
         const msg = !result.success ? (result as { error: string }).error : 'Failed to save expense'
-        setError(msg)
+        setError(msg || 'An error occurred while saving the expense. Please check your internet connection and try again.')
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to save expense')
+      console.error('Error submitting expense:', err)
+      let errorMessage = 'Failed to save expense'
+      if (err?.message) {
+        errorMessage = err.message
+      } else if (err?.toString().includes('network') || err?.toString().includes('fetch')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.'
+      } else if (err?.toString().includes('timeout')) {
+        errorMessage = 'Request timed out. The files may be too large. Please try with smaller images.'
+      } else if (err?.toString().includes('413') || err?.toString().includes('PayloadTooLarge')) {
+        errorMessage = 'Files are too large. Please compress images or use smaller files (max 10MB each).'
+      }
+      setError(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -191,7 +302,7 @@ export default function NewExpense() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-center gap-2"><span>⚠️</span>{error}</div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className={labelClass}>Expense Date</label>
               <input name="expense_date" type="date" max={new Date().toISOString().split('T')[0]} className={inputClass} required />
@@ -235,24 +346,29 @@ export default function NewExpense() {
               <span className="text-sm font-bold text-blue-900">Invoice</span>
               <div>
                 <label className={labelClass}>Total Amount</label>
-                <input name="total_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter total amount" className={inputClass} value={total} onChange={handleTotalChange} required />
+                <input name="total_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter total amount" className={inputClass} value={total} onChange={handleTotalChange} onBlur={handleTotalBlur} required />
               </div>
               <div>
                 <label className={labelClass}>Invoice Proof <span className="text-red-600">*</span></label>
-                <input ref={invoiceCamera} name="invoice" type="file" accept="image/*" capture="environment" className="hidden" onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')} />
-                <input ref={invoiceGallery} name="invoice" type="file" accept="image/*" className="hidden" onChange={(e: any) => setInvoiceFileName(e.target.files?.[0]?.name || '')} />
+                <input ref={invoiceCamera} name="invoice" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleInvoiceFileChange} />
+                <input ref={invoiceGallery} name="invoice" type="file" accept="image/*" className="hidden" onChange={handleInvoiceFileChange} />
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => invoiceCamera.current?.click()} className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200">📷 Take Photo</button>
                   <button type="button" onClick={() => invoiceGallery.current?.click()} className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200">🖼 From Gallery</button>
                 </div>
-                {invoiceFileName && <div className="text-xs text-slate-600 mt-1">📎 {invoiceFileName}</div>}
+                {invoiceFileName && (
+                  <div className="text-xs text-slate-600 mt-1">
+                    📎 {invoiceFileName} {invoiceFileSize > 0 && <span className="text-slate-500">({formatFileSize(invoiceFileSize)})</span>}
+                  </div>
+                )}
+                <p className="text-xs text-slate-500 mt-1">Max file size: {formatFileSize(MAX_FILE_SIZE)}</p>
               </div>
             </div>
             <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg p-3 space-y-3">
               <span className="text-sm font-bold text-emerald-900">Payment Done Now</span>
               <div>
                 <label className={labelClass}>Paid Amount</label>
-                <input name="paid_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter paid amount" className={inputClass} value={paid} onChange={handlePaidChange} required />
+                <input name="paid_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter paid amount" className={inputClass} value={paid} onChange={handlePaidChange} onBlur={handlePaidBlur} required />
               </div>
               <div>
                 <label className={labelClass}>Payment Method</label>
@@ -264,13 +380,18 @@ export default function NewExpense() {
               </div>
               <div>
                 <label className={labelClass}>Payment Proof {paidNum > 0 && <span className="text-red-600">*</span>}</label>
-                <input ref={payCamera} name="payment_proof" type="file" accept="image/*" capture="environment" className="hidden" onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')} />
-                <input ref={payGallery} name="payment_proof" type="file" accept="image/*" className="hidden" onChange={(e: any) => setPaymentFileName(e.target.files?.[0]?.name || '')} />
+                <input ref={payCamera} name="payment_proof" type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePaymentFileChange} />
+                <input ref={payGallery} name="payment_proof" type="file" accept="image/*" className="hidden" onChange={handlePaymentFileChange} />
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => payCamera.current?.click()} className="bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200">📷 Take Photo</button>
                   <button type="button" onClick={() => payGallery.current?.click()} className="bg-slate-600 hover:bg-slate-700 text-white py-2 px-3 rounded-md font-semibold text-xs transition-colors duration-200">🖼 From Gallery</button>
                 </div>
-                {paymentFileName && <div className="text-xs text-slate-600 mt-1">📎 {paymentFileName}</div>}
+                {paymentFileName && (
+                  <div className="text-xs text-slate-600 mt-1">
+                    📎 {paymentFileName} {paymentFileSize > 0 && <span className="text-slate-500">({formatFileSize(paymentFileSize)})</span>}
+                  </div>
+                )}
+                {paidNum > 0 && <p className="text-xs text-slate-500 mt-1">Max file size: {formatFileSize(MAX_FILE_SIZE)}</p>}
               </div>
             </div>
             {(totalNum > 0 || paidNum > 0) && (
