@@ -269,7 +269,7 @@ export default function NewExpense() {
       if (invoiceFile && invoiceFile.size > 0) {
         const invoiceResult = await uploadFile(invoiceFile)
         if (!invoiceResult.success) {
-          setError(invoiceResult.error || 'Failed to upload invoice')
+          setError('error' in invoiceResult ? invoiceResult.error : 'Failed to upload invoice')
           setSaving(false)
           return
         }
@@ -280,7 +280,7 @@ export default function NewExpense() {
       if (paymentFile && paymentFile.size > 0) {
         const paymentResult = await uploadFile(paymentFile)
         if (!paymentResult.success) {
-          setError(paymentResult.error || 'Failed to upload payment proof')
+          setError('error' in paymentResult ? paymentResult.error : 'Failed to upload payment proof')
           setSaving(false)
           return
         }
@@ -317,7 +317,7 @@ export default function NewExpense() {
         setPaymentFileSize(0)
         setSuccess({ expense_no: result.expense_no, total: totalNum, paid: paidNum, balance })
       } else {
-        const msg = !result.success ? (result as { error: string }).error : 'Failed to save expense'
+        const msg = !result.success ? ('error' in result ? result.error : 'Failed to save expense') : 'Failed to save expense'
         setError(msg || 'An error occurred while saving the expense. Please check your internet connection and try again.')
       }
     } catch (err: any) {
