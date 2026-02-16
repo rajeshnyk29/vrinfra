@@ -158,6 +158,8 @@ export default function NewExpense() {
         setPaymentMode('Cash')
         setInvoiceFileName('')
         setPaymentFileName('')
+      } else {
+        setError(result.error || 'Failed to save expense')
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to save expense')
