@@ -9,6 +9,27 @@ function isValidUuid(id: string | null | undefined): boolean {
   return uuidRegex.test(id)
 }
 
+export async function uploadFile(file: File): Promise<{ success: true; url: string } | { success: false; error: string }> {
+  try {
+    const orgId = await getCurrentUserOrgId()
+    if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
+
+    const name = Date.now() + '-' + file.name
+    const uploadRes = await supabaseService.storage.from('expenses-bills').upload(name, file)
+    
+    if (uploadRes.error) {
+      console.error('File upload error:', uploadRes.error)
+      return { success: false, error: `Upload failed: ${uploadRes.error.message}` }
+    }
+    
+    const { data: urlData } = supabaseService.storage.from('expenses-bills').getPublicUrl(name)
+    return { success: true, url: urlData.publicUrl }
+  } catch (err: any) {
+    console.error('Upload file error:', err)
+    return { success: false, error: err?.message || 'Failed to upload file' }
+  }
+}
+
 export async function createExpense(form: FormData): Promise<{ success: true; expense_no: string } | { success: false; error: string }> {
   try {
     const orgId = await getCurrentUserOrgId()
@@ -20,6 +41,11 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
       .eq('org_id', orgId)
       .single()
 
+    if (seq.error) {
+      console.error('Sequence fetch error:', seq.error)
+      return { success: false, error: `Failed to get sequence: ${seq.error.message}` }
+    }
+
     const last = seq.data?.last_no ?? 1000
     const next = last + 1
     const expense_no = `EX-${next}`
@@ -29,7 +55,10 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
       .update({ last_no: next })
       .eq('org_id', orgId)
 
-    if (updateSeq.error) return { success: false, error: updateSeq.error.message }
+    if (updateSeq.error) {
+      console.error('Sequence update error:', updateSeq.error)
+      return { success: false, error: updateSeq.error.message }
+    }
 
     const total = Number(form.get('total_amount'))
     const paid = Number(form.get('paid_amount'))
@@ -38,16 +67,16 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
       return { success: false, error: 'Paid amount cannot exceed total' }
     }
 
-    const invoice = form.get('invoice') as File
-    if (!invoice || invoice.size === 0) {
+    // Get file URLs from form (uploaded via server action)
+    const bill_image_url = form.get('bill_image_url') as string || ''
+    const first_payment_proof = form.get('payment_proof_url') as string || ''
+
+    if (!bill_image_url) {
       return { success: false, error: 'Invoice proof is required' }
     }
 
-    if (paid > 0) {
-      const proof = form.get('payment_proof') as File
-      if (!proof || proof.size === 0) {
-        return { success: false, error: 'Payment proof is required when paid amount is greater than 0' }
-      }
+    if (paid > 0 && !first_payment_proof) {
+      return { success: false, error: 'Payment proof is required when paid amount is greater than 0' }
     }
 
     const balance = total - paid
@@ -57,26 +86,6 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
     if (paid > 0 && balance > 0) credit_status = 'PARTIAL_CREDIT'
 
     const status = balance === 0 ? 'CLOSED' : 'OPEN'
-
-    let bill_image_url = ''
-    if (invoice && invoice.size > 0) {
-      const name = Date.now() + '-' + invoice.name
-      const uploadRes = await supabaseService.storage.from('expenses-bills').upload(name, invoice)
-      if (uploadRes.error) return { success: false, error: `Invoice upload failed: ${uploadRes.error.message}` }
-      bill_image_url =
-        supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
-    }
-
-    let first_payment_proof = ''
-    const proof = form.get('payment_proof') as File
-
-    if (proof && proof.size > 0) {
-      const name = Date.now() + '-' + proof.name
-      const proofUpload = await supabaseService.storage.from('expenses-bills').upload(name, proof)
-      if (proofUpload.error) return { success: false, error: `Payment proof upload failed: ${proofUpload.error.message}` }
-      first_payment_proof =
-        supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
-    }
 
     const categoryId = form.get('category_id') as string
     const vendorId = form.get('vendor_id') as string
@@ -98,7 +107,10 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
       description: form.get('description')
     }).select().single()
 
-    if (ins.error) return { success: false, error: ins.error.message }
+    if (ins.error) {
+      console.error('Expense insert error:', ins.error)
+      return { success: false, error: `Failed to save expense: ${ins.error.message}` }
+    }
 
     if (paid > 0 && first_payment_proof) {
       const paymentMode = form.get('payment_method') || 'Cash'
@@ -122,14 +134,16 @@ export async function createExpense(form: FormData): Promise<{ success: true; ex
       const paymentIns = await supabaseService.from('expense_payments').insert(paymentData)
 
       if (paymentIns.error) {
+        console.error('Payment insert error:', paymentIns.error)
         return { success: false, error: `Failed to save payment record: ${paymentIns.error.message}` }
       }
     }
 
     return { success: true, expense_no }
   } catch (err: any) {
+    console.error('Create expense error:', err)
     const message = err?.message || String(err) || 'Failed to save expense'
-    return { success: false, error: message }
+    return { success: false, error: `Server error: ${message}` }
   }
 }
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../../lib/supabaseClient'
-import { createExpense } from '../actions'
+import { createExpense, uploadFile } from '../actions'
 import { getUsers } from '../../master/users/actions'
 
 type Site = { id: string; name: string }
@@ -106,17 +106,14 @@ export default function NewExpense() {
 
   function handleTotalChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
-    // Allow empty string, minus sign, or valid number input
     if (v === '' || v === '-') { 
       setTotal(v)
       return 
     }
-    // Only validate that it's a number, don't round while typing
     const num = Number(v)
     if (!Number.isNaN(num)) {
-      setTotal(v) // Keep the raw input value
+      setTotal(v)
     } else {
-      // If invalid, keep previous value
       return
     }
   }
@@ -131,17 +128,14 @@ export default function NewExpense() {
 
   function handlePaidChange(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
-    // Allow empty string, minus sign, or valid number input
     if (v === '' || v === '-') { 
       setPaid(v)
       return 
     }
-    // Only validate that it's a number, don't round while typing
     const num = Number(v)
     if (!Number.isNaN(num)) {
-      setPaid(v) // Keep the raw input value
+      setPaid(v)
     } else {
-      // If invalid, keep previous value
       return
     }
   }
@@ -167,6 +161,17 @@ export default function NewExpense() {
       setInvoiceFileName(file.name)
       setInvoiceFileSize(file.size)
       setError(null)
+      // Also update the other input to keep them in sync
+      if (invoiceCamera.current && invoiceCamera.current !== e.target) {
+        const dataTransfer = new DataTransfer()
+        dataTransfer.items.add(file)
+        invoiceCamera.current.files = dataTransfer.files
+      }
+      if (invoiceGallery.current && invoiceGallery.current !== e.target) {
+        const dataTransfer = new DataTransfer()
+        dataTransfer.items.add(file)
+        invoiceGallery.current.files = dataTransfer.files
+      }
     }
   }
 
@@ -183,6 +188,17 @@ export default function NewExpense() {
       setPaymentFileName(file.name)
       setPaymentFileSize(file.size)
       setError(null)
+      // Also update the other input to keep them in sync
+      if (payCamera.current && payCamera.current !== e.target) {
+        const dataTransfer = new DataTransfer()
+        dataTransfer.items.add(file)
+        payCamera.current.files = dataTransfer.files
+      }
+      if (payGallery.current && payGallery.current !== e.target) {
+        const dataTransfer = new DataTransfer()
+        dataTransfer.items.add(file)
+        payGallery.current.files = dataTransfer.files
+      }
     }
   }
 
@@ -193,30 +209,100 @@ export default function NewExpense() {
     if (totalNum <= 0) { setError('Total amount must be greater than 0'); return }
     if (paidNum < 0) { setError('Paid amount cannot be negative'); return }
     if (paidNum > totalNum) { setError('Paid amount cannot exceed total amount'); return }
-    if (!invoiceFileName) { setError('Invoice proof is required. Please upload a photo or select from gallery.'); return }
-    if (paidNum > 0 && !paymentFileName) { setError('Payment proof is required when paid amount is greater than 0.'); return }
     
-    // Validate file sizes before submission
+    setSaving(true)
     const formData = new FormData(e.currentTarget)
-    const invoiceFile = formData.get('invoice') as File
-    const paymentFile = formData.get('payment_proof') as File
     
-    if (invoiceFile && invoiceFile.size > MAX_FILE_SIZE) {
+    // Get files from form - check both inputs
+    let invoiceFile = formData.get('invoice') as File | null
+    if (!invoiceFile || invoiceFile.size === 0) {
+      // Try to get from the refs directly
+      if (invoiceCamera.current?.files?.[0]) {
+        invoiceFile = invoiceCamera.current.files[0]
+      } else if (invoiceGallery.current?.files?.[0]) {
+        invoiceFile = invoiceGallery.current.files[0]
+      }
+    }
+    
+    let paymentFile = formData.get('payment_proof') as File | null
+    if (!paymentFile || paymentFile.size === 0) {
+      // Try to get from the refs directly
+      if (payCamera.current?.files?.[0]) {
+        paymentFile = payCamera.current.files[0]
+      } else if (payGallery.current?.files?.[0]) {
+        paymentFile = payGallery.current.files[0]
+      }
+    }
+    
+    // Validate files exist
+    if (!invoiceFile || invoiceFile.size === 0) {
+      setError('Invoice proof is required. Please upload a photo or select from gallery.')
+      setSaving(false)
+      return
+    }
+    
+    if (paidNum > 0 && (!paymentFile || paymentFile.size === 0)) {
+      setError('Payment proof is required when paid amount is greater than 0.')
+      setSaving(false)
+      return
+    }
+    
+    // Validate file sizes
+    if (invoiceFile.size > MAX_FILE_SIZE) {
       setError(`Invoice file is too large (${formatFileSize(invoiceFile.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`)
+      setSaving(false)
       return
     }
     
     if (paymentFile && paymentFile.size > MAX_FILE_SIZE) {
       setError(`Payment proof file is too large (${formatFileSize(paymentFile.size)}). Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`)
+      setSaving(false)
       return
     }
-    
-    setSaving(true)
-    formData.set('total_amount', String(totalNum))
-    formData.set('paid_amount', String(paidNum))
-    formData.set('added_by_name', users.find(u => u.id === formData.get('added_by_user_id'))?.name || '')
+
     try {
-      const result = await createExpense(formData)
+      // Upload files via server action (bypasses RLS, uses service role)
+      let bill_image_url = ''
+      let payment_proof_url = ''
+
+      // Upload invoice
+      if (invoiceFile && invoiceFile.size > 0) {
+        const invoiceResult = await uploadFile(invoiceFile)
+        if (!invoiceResult.success) {
+          setError(invoiceResult.error || 'Failed to upload invoice')
+          setSaving(false)
+          return
+        }
+        bill_image_url = invoiceResult.url
+      }
+
+      // Upload payment proof
+      if (paymentFile && paymentFile.size > 0) {
+        const paymentResult = await uploadFile(paymentFile)
+        if (!paymentResult.success) {
+          setError(paymentResult.error || 'Failed to upload payment proof')
+          setSaving(false)
+          return
+        }
+        payment_proof_url = paymentResult.url
+      }
+
+      // Now create FormData with URLs instead of files
+      const expenseFormData = new FormData()
+      expenseFormData.set('total_amount', String(totalNum))
+      expenseFormData.set('paid_amount', String(paidNum))
+      expenseFormData.set('bill_image_url', bill_image_url)
+      expenseFormData.set('payment_proof_url', payment_proof_url)
+      expenseFormData.set('expense_date', formData.get('expense_date') as string)
+      expenseFormData.set('site_id', formData.get('site_id') as string)
+      expenseFormData.set('category_id', formData.get('category_id') as string || '')
+      expenseFormData.set('vendor_id', formData.get('vendor_id') as string || '')
+      expenseFormData.set('payment_method', formData.get('payment_method') as string)
+      expenseFormData.set('added_by_user_id', formData.get('added_by_user_id') as string)
+      expenseFormData.set('added_by_name', users.find(u => u.id === formData.get('added_by_user_id'))?.name || '')
+      expenseFormData.set('description', formData.get('description') as string || '')
+
+      const result = await createExpense(expenseFormData)
       if (result.success && result.expense_no) {
         // Reset form before setting success state
         if (formRef.current) {
@@ -242,9 +328,7 @@ export default function NewExpense() {
       } else if (err?.toString().includes('network') || err?.toString().includes('fetch')) {
         errorMessage = 'Network error. Please check your internet connection and try again.'
       } else if (err?.toString().includes('timeout')) {
-        errorMessage = 'Request timed out. The files may be too large. Please try with smaller images.'
-      } else if (err?.toString().includes('413') || err?.toString().includes('PayloadTooLarge')) {
-        errorMessage = 'Files are too large. Please compress images or use smaller files (max 10MB each).'
+        errorMessage = 'Request timed out. Please try again.'
       }
       setError(errorMessage)
     } finally {
