@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { addPayment } from '../../actions'
 
@@ -32,6 +32,10 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (success) window.scrollTo(0, 0)
+  }, [success])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -77,6 +81,46 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col justify-center p-4 pt-8 pb-8">
+        <div className="max-w-md mx-auto w-full flex-shrink-0">
+          <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">
+            <div className="text-center success-animate">
+              <div className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto success-pulse shadow-md shadow-emerald-500/30">
+                <span className="text-2xl text-white">✓</span>
+              </div>
+              <h1 className="text-lg font-bold text-emerald-800 mt-3">Payment Saved Successfully</h1>
+              <p className="text-sm text-slate-600 mt-0.5">{success}</p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-3 text-xs">
+              <div className="flex justify-between py-1"><span className="text-slate-700">Total</span><span className="font-semibold text-slate-900">₹{expenseState.total_amount}</span></div>
+              <div className="flex justify-between py-1"><span className="text-slate-700">Paid</span><span className="font-semibold text-emerald-700">₹{expenseState.paid_amount}</span></div>
+              <div className="flex justify-between mt-1.5 pt-2 border-t border-amber-200">
+                <span className="text-slate-800 font-semibold">Pending Balance</span>
+                <span className={`font-bold text-base ${expenseState.balance_amount > 0 ? 'text-red-600' : 'text-emerald-700'}`}>₹{expenseState.balance_amount}</span>
+              </div>
+            </div>
+            <div className="space-y-2 pt-1">
+              <button
+                className="w-full border-2 border-blue-600 text-blue-700 hover:bg-blue-50 py-2 rounded-lg text-xs font-semibold transition-colors duration-200"
+                onClick={() => router.push(`/expenses/${expenseNo}/history`)}
+              >
+                View Payment History
+              </button>
+              <button
+                className="w-full border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg text-xs font-medium transition-colors duration-200"
+                onClick={() => router.push('/dashboard')}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -180,31 +224,6 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
 
         {error && (
           <div className="mt-1 text-sm text-red-600">{error}</div>
-        )}
-
-        {success && (
-          <div className="mt-1">
-            <div className="success-animate flex-col items-center py-4 flex">
-              <div className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center success-pulse">
-                <span className="text-3xl text-white">✓</span>
-              </div>
-              <p className="mt-2 font-semibold text-green-700">{success}</p>
-            </div>
-            <div className="mt-2 flex gap-2">
-              <button
-                className="flex-1 border border-blue-700 text-blue-700 rounded p-2 text-sm font-semibold"
-                onClick={() => router.push(`/expenses/${expenseNo}/history`)}
-              >
-                View History
-              </button>
-              <button
-                className="flex-1 border border-gray-300 text-gray-700 rounded p-2 text-sm"
-                onClick={() => router.push('/dashboard')}
-              >
-                Back to Dashboard
-              </button>
-            </div>
-          </div>
         )}
 
       </div>
