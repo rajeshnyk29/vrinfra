@@ -12,15 +12,20 @@ export async function createServerSupabase() {
         return cookieStore.getAll()
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          cookieStore.set(name, value, {
-            ...options,
-            path: '/',
-            sameSite: 'lax',
-            secure: process.env.NODE_ENV === 'production',
-            maxAge: options?.maxAge ?? 60 * 60 * 24 * 7,
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, {
+              ...options,
+              path: '/',
+              sameSite: 'lax',
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: options?.maxAge ?? 60 * 60 * 24 * 7,
+            })
           })
-        })
+        } catch (err) {
+          // Cookies can only be set in Server Actions or Route Handlers
+          // Silently ignore if called during render (e.g., in layout.tsx)
+        }
       },
     },
   })

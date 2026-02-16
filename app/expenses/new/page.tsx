@@ -131,11 +131,8 @@ export default function NewExpense() {
         setInvoiceFileName('')
         setPaymentFileName('')
       } else {
-        if (!result.success) {
-          setError(result.error || 'Failed to save expense')
-        } else {
-          setError('Failed to save expense')
-        }
+        const msg = !result.success ? (result as { error: string }).error : 'Failed to save expense'
+        setError(msg)
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to save expense')
