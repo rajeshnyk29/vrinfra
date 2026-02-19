@@ -9,24 +9,46 @@ function isValidUuid(id: string | null | undefined): boolean {
   return uuidRegex.test(id)
 }
 
-export async function uploadFile(file: File): Promise<{ success: true; url: string } | { success: false; error: string }> {
+/** Returns a signed upload URL so the client can upload directly to Supabase (avoids Vercel 4.5MB body limit). */
+export async function getSignedUploadUrl(
+  fileName: string
+): Promise<
+  | { success: true; path: string; token: string; publicUrl: string }
+  | { success: false; error: string }
+> {
   try {
     const orgId = await getCurrentUserOrgId()
     if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
 
-    const name = Date.now() + '-' + file.name
-    const uploadRes = await supabaseService.storage.from('expenses-bills').upload(name, file)
-    
-    if (uploadRes.error) {
-      console.error('File upload error:', uploadRes.error)
-      return { success: false, error: `Upload failed: ${uploadRes.error.message}` }
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `${Date.now()}-${safeName}`
+
+    const { data, error } = await supabaseService.storage
+      .from('expenses-bills')
+      .createSignedUploadUrl(path)
+
+    if (error) {
+      console.error('createSignedUploadUrl error:', error)
+      return { success: false, error: `Upload setup failed: ${error.message}` }
     }
-    
-    const { data: urlData } = supabaseService.storage.from('expenses-bills').getPublicUrl(name)
-    return { success: true, url: urlData.publicUrl }
+
+    if (!data?.path || !data?.token) {
+      return { success: false, error: 'Invalid signed upload response' }
+    }
+
+    const { data: urlData } = supabaseService.storage
+      .from('expenses-bills')
+      .getPublicUrl(data.path)
+
+    return {
+      success: true,
+      path: data.path,
+      token: data.token,
+      publicUrl: urlData.publicUrl,
+    }
   } catch (err: any) {
-    console.error('Upload file error:', err)
-    return { success: false, error: err?.message || 'Failed to upload file' }
+    console.error('getSignedUploadUrl error:', err)
+    return { success: false, error: err?.message || 'Failed to get upload URL' }
   }
 }
 

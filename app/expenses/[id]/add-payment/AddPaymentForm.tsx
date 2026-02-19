@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import imageCompression from 'browser-image-compression'
+import toast from 'react-hot-toast'
 import { addPayment } from '../../actions'
 
 type ExpenseInfo = {
@@ -14,42 +16,120 @@ type ExpenseInfo = {
 
 type User = { id: string; name: string }
 
-type Props = {
-  expense: ExpenseInfo
-  users: User[]
-  expenseNo: string
+type Props = { expense: ExpenseInfo; users: User[]; expenseNo: string }
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
+
+function roundMoney(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  return Math.round(n * 100) / 100
+}
+
+// Same limits as New Expense
+const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+const MAX_COMPRESSED_SIZE = 1 * 1024 * 1024 // ~1MB
+const MAX_WIDTH_OR_HEIGHT = 1920
 
 export function AddPaymentForm({ expense, users, expenseNo }: Props) {
   const router = useRouter()
   const [expenseState, setExpenseState] = useState(expense)
-
   const [amount, setAmount] = useState('')
   const [paymentMode, setPaymentMode] = useState('Cash')
   const [addedByUserId, setAddedByUserId] = useState(users[0]?.id || '')
   const [proofFileName, setProofFileName] = useState('')
-
+  const [proofFileSize, setProofFileSize] = useState<number>(0)
+  const [proofOriginalSize, setProofOriginalSize] = useState<number>(0)
+  const [compressingProof, setCompressingProof] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const proofInputRef = useRef<HTMLInputElement>(null)
+  const compressedProofFile = useRef<File | null>(null)
 
   useEffect(() => {
     if (success) window.scrollTo(0, 0)
   }, [success])
 
+  async function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Hard limit (same as New Expense)
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(
+        `Payment proof too large (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_FILE_SIZE)}.`
+      )
+      e.target.value = ''
+      setProofFileName('')
+      setProofFileSize(0)
+      setProofOriginalSize(0)
+      compressedProofFile.current = null
+      return
+    }
+
+    setProofFileName(file.name)
+    setProofOriginalSize(file.size)
+    setCompressingProof(true)
+
+    try {
+      const options = {
+        maxSizeMB: MAX_COMPRESSED_SIZE / (1024 * 1024),
+        maxWidthOrHeight: MAX_WIDTH_OR_HEIGHT,
+        useWebWorker: true,
+        fileType: 'image/jpeg',
+        initialQuality: 0.8,
+      }
+
+      const blob = await imageCompression(file, options)
+      const compressedFile = new File(
+        [blob],
+        file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+        { type: 'image/jpeg', lastModified: Date.now() }
+      )
+
+      setProofFileSize(compressedFile.size)
+      compressedProofFile.current = compressedFile
+
+      // Reflect compressed file back into the input (like New Expense)
+      if (proofInputRef.current) {
+        const dt = new DataTransfer()
+        dt.items.add(compressedFile)
+        proofInputRef.current.files = dt.files
+      }
+    } catch (err: any) {
+      console.error('Compression error (payment proof):', err)
+      toast.error('Failed to compress image. Please try again.')
+      e.target.value = ''
+      setProofFileName('')
+      setProofFileSize(0)
+      setProofOriginalSize(0)
+      compressedProofFile.current = null
+    } finally {
+      setCompressingProof(false)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const amt = Number(amount)
-
     setError(null)
     setSuccess(null)
+
+    const raw = Number(amount)
+    const amt = roundMoney(raw)
 
     if (!amt || amt <= 0) {
       setError('Enter a valid amount greater than 0')
       return
     }
 
-    if (amt > expenseState.balance_amount) {
+    const currentBalance = roundMoney(expenseState.balance_amount)
+    if (amt > currentBalance) {
       setError('Amount exceeds invoice balance')
       return
     }
@@ -57,25 +137,35 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
     setSaving(true)
     const formEl = e.currentTarget
     const formData = new FormData(formEl)
-    formData.set('added_by_name', users.find(u => u.id === formData.get('added_by_user_id'))?.name || '')
+    formData.set(
+      'added_by_name',
+      users.find(u => u.id === formData.get('added_by_user_id'))?.name || ''
+    )
+
+    if (compressedProofFile.current) {
+      formData.set('proof', compressedProofFile.current)
+    }
 
     try {
       await addPayment(expenseNo, formData)
 
-      const newPaid = expenseState.paid_amount + amt
-      const newBalance = expenseState.total_amount - newPaid
+      const newPaid = roundMoney(expenseState.paid_amount + amt)
+      const newBalance = roundMoney(expenseState.total_amount - newPaid)
 
       setExpenseState({
         ...expenseState,
         paid_amount: newPaid,
-        balance_amount: newBalance
+        balance_amount: newBalance,
       })
 
       setSuccess('Payment saved successfully')
       setAmount('')
       setPaymentMode('Cash')
       setProofFileName('')
-      if (formEl) formEl.reset()
+      setProofFileSize(0)
+      setProofOriginalSize(0)
+      compressedProofFile.current = null
+      formEl.reset()
     } catch (err: any) {
       setError(err?.message || 'Failed to save payment')
     } finally {
@@ -92,15 +182,37 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
               <div className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto success-pulse shadow-md shadow-emerald-500/30">
                 <span className="text-2xl text-white">✓</span>
               </div>
-              <h1 className="text-lg font-bold text-emerald-800 mt-3">Payment Saved Successfully</h1>
+              <h1 className="text-lg font-bold text-emerald-800 mt-3">
+                Payment Saved Successfully
+              </h1>
               <p className="text-sm text-slate-600 mt-0.5">{success}</p>
             </div>
             <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-3 text-xs">
-              <div className="flex justify-between py-1"><span className="text-slate-700">Total</span><span className="font-semibold text-slate-900">₹{expenseState.total_amount}</span></div>
-              <div className="flex justify-between py-1"><span className="text-slate-700">Paid</span><span className="font-semibold text-emerald-700">₹{expenseState.paid_amount}</span></div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-700">Total</span>
+                <span className="font-semibold text-slate-900">
+                  ₹{expenseState.total_amount}
+                </span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-700">Paid</span>
+                <span className="font-semibold text-emerald-700">
+                  ₹{expenseState.paid_amount}
+                </span>
+              </div>
               <div className="flex justify-between mt-1.5 pt-2 border-t border-amber-200">
-                <span className="text-slate-800 font-semibold">Pending Balance</span>
-                <span className={`font-bold text-base ${expenseState.balance_amount > 0 ? 'text-red-600' : 'text-emerald-700'}`}>₹{expenseState.balance_amount}</span>
+                <span className="text-slate-800 font-semibold">
+                  Pending Balance
+                </span>
+                <span
+                  className={`font-bold text-base ${
+                    expenseState.balance_amount > 0
+                      ? 'text-red-600'
+                      : 'text-emerald-700'
+                  }`}
+                >
+                  ₹{expenseState.balance_amount}
+                </span>
               </div>
             </div>
             <div className="space-y-2 pt-1">
@@ -126,32 +238,42 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
   return (
     <div className="min-h-screen bg-gray-100 p-3">
       <div className="max-w-md mx-auto bg-white rounded-xl shadow p-4 space-y-4">
-
         <div>
           <h1 className="text-xl font-bold text-blue-900">Add Payment</h1>
           <div className="text-xs text-gray-600 mt-1">
-            Expense No: <span className="font-semibold">{expenseState.expense_no}</span>
+            Expense No:{' '}
+            <span className="font-semibold">{expenseState.expense_no}</span>
           </div>
         </div>
 
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-700">Total</span>
-            <span className="font-semibold">₹{expenseState.total_amount}</span>
+            <span className="font-semibold">
+              ₹{expenseState.total_amount}
+            </span>
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-gray-700">Paid</span>
-            <span className="font-semibold text-green-700">₹{expenseState.paid_amount}</span>
+            <span className="font-semibold text-green-700">
+              ₹{expenseState.paid_amount}
+            </span>
           </div>
           <div className="flex justify-between mt-2 pt-2 border-t border-yellow-200">
-            <span className="text-gray-800 font-semibold">Pending Balance</span>
-            <span className="font-extrabold text-red-600 text-lg">₹{expenseState.balance_amount}</span>
+            <span className="text-gray-800 font-semibold">
+              Pending Balance
+            </span>
+            <span className="font-extrabold text-red-600 text-lg">
+              ₹{expenseState.balance_amount}
+            </span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold mb-1">Added by</label>
+            <label className="block text-sm font-semibold mb-1">
+              Added by
+            </label>
             <select
               name="added_by_user_id"
               className="w-full border p-2 rounded text-base"
@@ -161,20 +283,28 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
             >
               <option value="">Choose user</option>
               {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
               ))}
             </select>
             {users.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">No users yet. Add users in Master → Users and have them sign up.</p>
+              <p className="text-xs text-amber-600 mt-1">
+                No users yet. Add users in Master → Users and have them sign
+                up.
+              </p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1">Payment Amount</label>
+            <label className="block text-sm font-semibold mb-1">
+              Payment Amount
+            </label>
             <input
               name="amount"
               type="number"
               inputMode="decimal"
+              step="0.01"
               placeholder="Enter amount"
               className="w-full border p-2 rounded text-base"
               value={amount}
@@ -184,7 +314,9 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1">Payment Method</label>
+            <label className="block text-sm font-semibold mb-1">
+              Payment Method
+            </label>
             <select
               name="payment_mode"
               className="w-full border p-2 rounded text-base"
@@ -199,33 +331,51 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-1">Payment Proof</label>
+            <label className="block text-sm font-semibold mb-1">
+              Payment Proof
+            </label>
             <input
+              ref={proofInputRef}
               name="proof"
               type="file"
               accept="image/*"
               className="w-full text-sm"
               required
-              onChange={(e: any) => setProofFileName(e.target.files?.[0]?.name || '')}
+              onChange={handleProofFileChange}
             />
-            {proofFileName && (
-              <div className="text-xs text-gray-600 mt-1">📎 {proofFileName}</div>
+            {compressingProof && (
+              <div className="text-xs text-blue-600 mt-1">Compressing...</div>
             )}
+            {proofFileName && !compressingProof && (
+              <div className="text-xs text-gray-600 mt-1">
+                📎 {proofFileName}
+                {proofFileSize > 0 && (
+                  <span className="text-gray-500">
+                    {' '}
+                    (
+                    {proofOriginalSize > 0 && proofOriginalSize !== proofFileSize
+                      ? `${formatFileSize(proofOriginalSize)} → ${formatFileSize(proofFileSize)}`
+                      : formatFileSize(proofFileSize)}
+                    )
+                  </span>
+                )}
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              Max {formatFileSize(MAX_FILE_SIZE)} (compressed automatically)
+            </p>
           </div>
 
           <button
             type="submit"
             className="w-full bg-blue-700 text-white p-3 rounded font-semibold text-base disabled:opacity-60"
-            disabled={saving}
+            disabled={saving || compressingProof}
           >
             {saving ? 'Saving…' : 'Save Payment'}
           </button>
         </form>
 
-        {error && (
-          <div className="mt-1 text-sm text-red-600">{error}</div>
-        )}
-
+        {error && <div className="mt-1 text-sm text-red-600">{error}</div>}
       </div>
     </div>
   )

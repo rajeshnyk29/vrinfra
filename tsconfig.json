@@ -17,6 +17,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./app/*"
+      ],
+      "@/lib/*": [
+        "./lib/*"
+      ]
+    },
     "plugins": [
       {
         "name": "next"
