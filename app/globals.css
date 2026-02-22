@@ -42,3 +42,13 @@ body {
 .success-pulse {
   animation: success-pulse 0.6s ease-in-out 2;
 }
+/* Prevent focus outline and text cursor on success icons (stops "typing symbol") */
+.success-icon-wrap {
+  cursor: default;
+  outline: none;
+  user-select: none;
+}
+.success-icon-wrap:focus,
+.success-icon-wrap:focus-visible {
+  outline: none;
+}

@@ -305,9 +305,9 @@ export default function NewExpense() {
       <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col justify-center p-4 pt-8 pb-8 safe-area-inset">
         <div className="max-w-md mx-auto w-full flex-shrink-0">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15 }} className="text-center">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 15 }} className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/30">
-                <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3 }} className="text-2xl text-white">✓</motion.span>
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15 }} className="text-center success-icon-wrap">
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 15 }} className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/30 success-icon-wrap">
+                <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.3 }} className="text-2xl text-white select-none">✓</motion.span>
               </motion.div>
               <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-lg font-bold text-emerald-800 mt-3">Expense Saved Successfully</motion.h1>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="text-xs text-slate-600 mt-0.5">Expense No: <span className="font-semibold text-slate-800">{success.expense_no}</span></motion.div>
@@ -324,6 +324,7 @@ export default function NewExpense() {
               {success.balance > 0 && <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2" onClick={() => router.push(`/expenses/${success.expense_no}/add-payment`)}>+ Add Payment</Button>}
               <Button variant="outline" className="w-full border-2 border-blue-600 text-blue-700 hover:bg-blue-50 py-2" onClick={() => router.push(`/expenses/${success.expense_no}/history`)}>View Payment History</Button>
               <Button variant="outline" className="w-full py-2" onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
+              <Button variant="outline" className="w-full py-2" onClick={() => router.push('/')}>Back to Home</Button>
             </motion.div>
           </motion.div>
         </div>
@@ -389,7 +390,7 @@ export default function NewExpense() {
               <span className="text-sm font-bold text-emerald-900">Payment Done Now</span>
               <div>
                 <label className={labelClass}>Paid Amount</label>
-                <input name="paid_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter paid amount" className={inputClass} value={paid} onChange={handlePaidChange} onBlur={handlePaidBlur} required />
+                <input name="paid_amount" type="number" inputMode="decimal" step="0.01" placeholder="Enter paid amount" className={inputClass} value={paid} onChange={handlePaidChange} onBlur={handlePaidBlur} onWheel={e => { e.currentTarget.blur() }} required />
               </div>
               <div>
                 <label className={labelClass}>Payment Method</label>

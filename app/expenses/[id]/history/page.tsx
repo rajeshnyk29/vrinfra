@@ -53,7 +53,7 @@ export default async function Page(props: any) {
     <div className="p-4 max-w-md mx-auto">
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 block font-medium"
+        className="inline-flex gap-2 text-sm text-blue-600 hover:text-blue-800 mb-3 block font-medium"
       >
         ← Back to Dashboard
       </Link>
@@ -64,7 +64,7 @@ export default async function Page(props: any) {
           <li key={p.id} className="p-3 border rounded bg-white">
             <div className="flex justify-between text-sm">
               <span className="font-medium">₹{Number(p.amount).toLocaleString('en-IN')}</span>
-              <FormattedPaymentDate isoString={p.paid_date} />
+              <FormattedPaymentDate isoString={p.created_at || p.paid_date} />
             </div>
             <div className="text-xs text-slate-500 mt-1">{p.payment_mode}</div>
             {p.added_by_user_id && (

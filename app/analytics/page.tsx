@@ -28,19 +28,15 @@ export default async function AnalyticsPage() {
     )
   }
 
-  const { data: expenses, error: expError } = await supabase
-    .from('expenses')
-    .select('id, expense_date, created_at, site_id, category_id, category, total_amount')
+  const [expensesRes, sitesRes, categoriesRes] = await Promise.all([
+    supabase.from('expenses').select('id, expense_date, created_at, site_id, category_id, category, total_amount'),
+    supabase.from('sites').select('id, name').order('name'),
+    supabase.from('categories').select('id, name').order('name'),
+  ])
 
-  const { data: sites } = await supabase
-    .from('sites')
-    .select('id, name')
-    .order('name')
-
-  const { data: categories } = await supabase
-    .from('categories')
-    .select('id, name')
-    .order('name')
+  const { data: expenses, error: expError } = expensesRes
+  const { data: sites } = sitesRes
+  const { data: categories } = categoriesRes
 
   if (expError) {
     return (

@@ -3,233 +3,174 @@
 import { supabaseService } from '../../lib/supabase'
 import { getCurrentUserOrgId } from '../../lib/auth'
 
-function isValidUuid(id: string | null | undefined): boolean {
-  if (!id || typeof id !== 'string') return false
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  return uuidRegex.test(id)
+const BUCKET = 'expenses-bills'
+
+export type MasterData = {
+  users: { id: string; name: string }[]
+  sites: { id: string; name: string }[]
+  categories: { id: string; name: string }[]
+  vendors: { id: string; name: string }[]
 }
 
-/** Returns a signed upload URL so the client can upload directly to Supabase (avoids Vercel 4.5MB body limit). */
-export async function getSignedUploadUrl(
-  fileName: string
-): Promise<
-  | { success: true; path: string; token: string; publicUrl: string }
-  | { success: false; error: string }
+export async function getNewExpenseMasterData(): Promise<MasterData | null> {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return null
+
+  const [usersRes, sitesRes, categoriesRes, vendorsRes] = await Promise.all([
+    supabaseService.from('users').select('id, name, email').eq('org_id', orgId).order('name'),
+    supabaseService.from('sites').select('id, name').order('name'),
+    supabaseService.from('categories').select('id, name').order('name'),
+    supabaseService.from('vendors').select('id, name').order('name'),
+  ])
+
+  const users = (usersRes.data || []).map((u: { id: string; name: string | null; email: string }) => ({
+    id: u.id,
+    name: (u.name && u.name.trim()) || u.email || 'Unknown'
+  }))
+  return {
+    users,
+    sites: sitesRes.data || [],
+    categories: categoriesRes.data || [],
+    vendors: vendorsRes.data || [],
+  }
+}
+
+export async function getSignedUploadUrl(fileName: string): Promise<
+  { success: true; path: string; token: string; publicUrl: string } | { success: false; error: string }
 > {
-  try {
-    const orgId = await getCurrentUserOrgId()
-    if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
 
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const path = `${Date.now()}-${safeName}`
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80)
+  const path = `${orgId}/${Date.now()}-${safeName}`
 
-    const { data, error } = await supabaseService.storage
-      .from('expenses-bills')
-      .createSignedUploadUrl(path)
+  const { data, error } = await supabaseService.storage
+    .from(BUCKET)
+    .createSignedUploadUrl(path)
 
-    if (error) {
-      console.error('createSignedUploadUrl error:', error)
-      return { success: false, error: `Upload setup failed: ${error.message}` }
-    }
+  if (error) return { success: false, error: error.message }
+  if (!data?.path || !data?.token) return { success: false, error: 'Failed to create upload URL' }
 
-    if (!data?.path || !data?.token) {
-      return { success: false, error: 'Invalid signed upload response' }
-    }
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const publicUrl = `${baseUrl}/storage/v1/object/public/${BUCKET}/${data.path}`
 
-    const { data: urlData } = supabaseService.storage
-      .from('expenses-bills')
-      .getPublicUrl(data.path)
-
-    return {
-      success: true,
-      path: data.path,
-      token: data.token,
-      publicUrl: urlData.publicUrl,
-    }
-  } catch (err: any) {
-    console.error('getSignedUploadUrl error:', err)
-    return { success: false, error: err?.message || 'Failed to get upload URL' }
-  }
+  return { success: true, path: data.path, token: data.token, publicUrl }
 }
 
-export async function createExpense(form: FormData): Promise<{ success: true; expense_no: string } | { success: false; error: string }> {
-  try {
-    const orgId = await getCurrentUserOrgId()
-    if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
+export async function createExpense(formData: FormData): Promise<
+  { success: true; expense_no: string } | { success: false; error: string }
+> {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return { success: false, error: 'Not signed in or organization not found' }
 
-    const seq = await supabaseService
-      .from('vr_sequence')
-      .select('last_no')
-      .eq('org_id', orgId)
-      .single()
+  const { data: seq } = await supabaseService
+    .from('vr_sequence')
+    .select('last_no')
+    .eq('org_id', orgId)
+    .single()
 
-    if (seq.error) {
-      console.error('Sequence fetch error:', seq.error)
-      return { success: false, error: `Failed to get sequence: ${seq.error.message}` }
-    }
+  const nextNo = (seq?.last_no ?? 1000) + 1
+  await supabaseService
+    .from('vr_sequence')
+    .update({ last_no: nextNo })
+    .eq('org_id', orgId)
 
-    const last = seq.data?.last_no ?? 1000
-    const next = last + 1
-    const expense_no = `EX-${next}`
+  const expense_no = 'VR-' + nextNo
+  const total_amount = Number(formData.get('total_amount')) || 0
+  const paid_amount = Number(formData.get('paid_amount')) || 0
+  const balance_amount = total_amount - paid_amount
+  const status = balance_amount <= 0 ? 'CLOSED' : 'OPEN'
 
-    const updateSeq = await supabaseService
-      .from('vr_sequence')
-      .update({ last_no: next })
-      .eq('org_id', orgId)
+  const { data: newExpense, error } = await supabaseService.from('expenses').insert({
+    org_id: orgId,
+    expense_no,
+    total_amount,
+    paid_amount,
+    balance_amount,
+    status,
+    bill_image_url: (formData.get('bill_image_url') as string) || null,
+    payment_proof_url: (formData.get('payment_proof_url') as string) || null,
+    expense_date: (formData.get('expense_date') as string) || null,
+    site_id: (formData.get('site_id') as string) || null,
+    category_id: (formData.get('category_id') as string) || null,
+    vendor_id: (formData.get('vendor_id') as string) || null,
+    payment_method: (formData.get('payment_method') as string) || null,
+    added_by_user_id: (formData.get('added_by_user_id') as string) || null,
+    description: (formData.get('description') as string) || null,
+  }).select('id').single()
 
-    if (updateSeq.error) {
-      console.error('Sequence update error:', updateSeq.error)
-      return { success: false, error: updateSeq.error.message }
-    }
+  if (error) return { success: false, error: error.message }
 
-    const total = Number(form.get('total_amount'))
-    const paid = Number(form.get('paid_amount'))
-
-    if (paid > total) {
-      return { success: false, error: 'Paid amount cannot exceed total' }
-    }
-
-    // Get file URLs from form (uploaded via server action)
-    const bill_image_url = form.get('bill_image_url') as string || ''
-    const first_payment_proof = form.get('payment_proof_url') as string || ''
-
-    if (!bill_image_url) {
-      return { success: false, error: 'Invoice proof is required' }
-    }
-
-    if (paid > 0 && !first_payment_proof) {
-      return { success: false, error: 'Payment proof is required when paid amount is greater than 0' }
-    }
-
-    const balance = total - paid
-
-    let credit_status = 'NO_CREDIT'
-    if (paid === 0) credit_status = 'FULL_CREDIT'
-    if (paid > 0 && balance > 0) credit_status = 'PARTIAL_CREDIT'
-
-    const status = balance === 0 ? 'CLOSED' : 'OPEN'
-
-    const categoryId = form.get('category_id') as string
-    const vendorId = form.get('vendor_id') as string
-
-    const ins = await supabaseService.from('expenses').insert({
+  if (paid_amount > 0 && newExpense?.id) {
+    const paidDate = (formData.get('expense_date') as string) || new Date().toISOString().slice(0, 10)
+    const paidAt = paidDate.length === 10 ? paidDate + 'T' + new Date().toTimeString().slice(0, 8) : paidDate
+    await supabaseService.from('expense_payments').insert({
       org_id: orgId,
-      expense_no,
-      expense_date: form.get('expense_date'),
-      site_id: form.get('site_id'),
-      category_id: categoryId || null,
-      vendor_id: vendorId || null,
-      total_amount: total,
-      paid_amount: paid,
-      balance_amount: balance,
-      credit_status,
-      status,
-      bill_image_url,
-      first_payment_proof,
-      description: form.get('description')
-    }).select().single()
-
-    if (ins.error) {
-      console.error('Expense insert error:', ins.error)
-      return { success: false, error: `Failed to save expense: ${ins.error.message}` }
-    }
-
-    if (paid > 0 && first_payment_proof) {
-      const paymentMode = form.get('payment_method') || 'Cash'
-      const addedByUserId = form.get('added_by_user_id') as string | null
-      const addedByName = (form.get('added_by_name') as string)?.trim() || null
-
-      const paymentData: Record<string, unknown> = {
-        org_id: orgId,
-        expense_id: ins.data.id,
-        amount: paid,
-        payment_mode: paymentMode,
-        proof_url: first_payment_proof,
-        paid_date: new Date().toISOString(),
-        added_by_name: addedByName
-      }
-
-      if (isValidUuid(addedByUserId)) {
-        paymentData.added_by_user_id = addedByUserId
-      }
-
-      const paymentIns = await supabaseService.from('expense_payments').insert(paymentData)
-
-      if (paymentIns.error) {
-        console.error('Payment insert error:', paymentIns.error)
-        return { success: false, error: `Failed to save payment record: ${paymentIns.error.message}` }
-      }
-    }
-
-    return { success: true, expense_no }
-  } catch (err: any) {
-    console.error('Create expense error:', err)
-    const message = err?.message || String(err) || 'Failed to save expense'
-    return { success: false, error: `Server error: ${message}` }
+      expense_id: newExpense.id,
+      amount: paid_amount,
+      payment_mode: (formData.get('payment_method') as string) || 'Cash',
+      proof_url: (formData.get('payment_proof_url') as string) || null,
+      paid_date: paidAt,
+      added_by_user_id: (formData.get('added_by_user_id') as string) || null,
+      added_by_name: (formData.get('added_by_name') as string) || null,
+    })
   }
+
+  return { success: true, expense_no }
 }
 
-export async function addPayment(expenseNo: string, form: FormData) {
+export async function addPayment(expenseNo: string, formData: FormData): Promise<void> {
   const orgId = await getCurrentUserOrgId()
   if (!orgId) throw new Error('Not signed in or organization not found')
 
-  const amount = Number(form.get('amount'))
-  const mode = form.get('payment_mode')
-  const file = form.get('proof') as File
-  const addedByUserId = form.get('added_by_user_id') as string | null
-  const addedByName = (form.get('added_by_name') as string)?.trim() || null
-
-  const exp = await supabaseService
+  const { data: expense, error: expErr } = await supabaseService
     .from('expenses')
-    .select('id, total_amount, paid_amount, balance_amount, org_id')
+    .select('id, org_id, total_amount, paid_amount, balance_amount')
     .eq('expense_no', expenseNo)
     .eq('org_id', orgId)
     .single()
 
-  if (!exp.data) throw new Error('Expense not found')
+  if (expErr || !expense) throw new Error('Expense not found')
 
-  if (amount > exp.data.balance_amount) {
-    throw new Error('Amount exceeds invoice balance')
+  const amount = Number(formData.get('amount')) || 0
+  if (amount <= 0) throw new Error('Invalid amount')
+  if (amount > Number(expense.balance_amount)) throw new Error('Amount exceeds balance')
+
+  const expenseOrgId = expense.org_id ?? orgId
+  const proofFile = formData.get('proof') as File | null
+  let proof_url = ''
+  if (proofFile?.size) {
+    const path = `${expenseOrgId}/payments/${expense.id}/${Date.now()}-proof.jpg`
+    const { error: upErr } = await supabaseService.storage
+      .from(BUCKET)
+      .upload(path, proofFile, { contentType: proofFile.type || 'image/jpeg', upsert: true })
+    if (upErr) throw new Error(upErr.message || 'Failed to upload proof')
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    proof_url = `${baseUrl}/storage/v1/object/public/${BUCKET}/${path}`
   }
 
-  const name = Date.now() + '-' + file.name
-  await supabaseService.storage.from('expenses-bills').upload(name, file)
-
-  const proofUrl =
-    supabaseService.storage.from('expenses-bills').getPublicUrl(name).data.publicUrl
-
-  const paymentData: Record<string, unknown> = {
-    org_id: exp.data.org_id,
-    expense_id: exp.data.id,
+  const paid_date = new Date().toISOString()
+  const { error: payErr } = await supabaseService.from('expense_payments').insert({
+    org_id: expenseOrgId,
+    expense_id: expense.id,
     amount,
-    payment_mode: mode,
-    proof_url: proofUrl,
-    paid_date: new Date().toISOString(),
-    added_by_name: addedByName
-  }
+    payment_mode: (formData.get('payment_mode') as string) || 'Cash',
+    proof_url: proof_url || null,
+    paid_date,
+    added_by_user_id: (formData.get('added_by_user_id') as string) || null,
+    added_by_name: (formData.get('added_by_name') as string) || null,
+  })
 
-  if (isValidUuid(addedByUserId)) {
-    paymentData.added_by_user_id = addedByUserId
-  }
+  if (payErr) throw new Error(payErr.message)
 
-  const paymentIns = await supabaseService.from('expense_payments').insert(paymentData)
+  const newPaid = Number(expense.paid_amount) + amount
+  const newBalance = Number(expense.total_amount) - newPaid
+  const status = newBalance <= 0 ? 'CLOSED' : 'OPEN'
 
-  if (paymentIns.error) {
-    throw new Error(`Failed to save payment: ${paymentIns.error.message}`)
-  }
-
-  const newPaid = exp.data.paid_amount + amount
-  const newBalance = exp.data.total_amount - newPaid
-
-  await supabaseService
+  const { error: updErr } = await supabaseService
     .from('expenses')
-    .update({
-      paid_amount: newPaid,
-      balance_amount: newBalance,
-      status: newBalance === 0 ? 'CLOSED' : 'OPEN'
-    })
-    .eq('id', exp.data.id)
-    .eq('org_id', orgId)
+    .update({ paid_amount: newPaid, balance_amount: newBalance, status })
+    .eq('id', expense.id)
 
-  return { success: true }
+  if (updErr) throw new Error(updErr.message)
 }

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import imageCompression from 'browser-image-compression'
 import toast from 'react-hot-toast'
 import { addPayment } from '../../actions'
+import Link from 'next/link'
 
 type ExpenseInfo = {
   id: string
@@ -31,9 +32,8 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-// Same limits as New Expense
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-const MAX_COMPRESSED_SIZE = 1 * 1024 * 1024 // ~1MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_COMPRESSED_SIZE = 1 * 1024 * 1024
 const MAX_WIDTH_OR_HEIGHT = 1920
 
 export function AddPaymentForm({ expense, users, expenseNo }: Props) {
@@ -53,14 +53,15 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
   const compressedProofFile = useRef<File | null>(null)
 
   useEffect(() => {
-    if (success) window.scrollTo(0, 0)
+    if (success) {
+      window.scrollTo(0, 0)
+      ;(document.activeElement as HTMLElement)?.blur?.()
+    }
   }, [success])
 
   async function handleProofFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Hard limit (same as New Expense)
     if (file.size > MAX_FILE_SIZE) {
       toast.error(
         `Payment proof too large (${formatFileSize(file.size)}). Max ${formatFileSize(MAX_FILE_SIZE)}.`
@@ -72,11 +73,9 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
       compressedProofFile.current = null
       return
     }
-
     setProofFileName(file.name)
     setProofOriginalSize(file.size)
     setCompressingProof(true)
-
     try {
       const options = {
         maxSizeMB: MAX_COMPRESSED_SIZE / (1024 * 1024),
@@ -85,18 +84,14 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
         fileType: 'image/jpeg',
         initialQuality: 0.8,
       }
-
       const blob = await imageCompression(file, options)
       const compressedFile = new File(
         [blob],
         file.name.replace(/\.[^/.]+$/, '') + '.jpg',
         { type: 'image/jpeg', lastModified: Date.now() }
       )
-
       setProofFileSize(compressedFile.size)
       compressedProofFile.current = compressedFile
-
-      // Reflect compressed file back into the input (like New Expense)
       if (proofInputRef.current) {
         const dt = new DataTransfer()
         dt.items.add(compressedFile)
@@ -119,21 +114,17 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
     e.preventDefault()
     setError(null)
     setSuccess(null)
-
     const raw = Number(amount)
     const amt = roundMoney(raw)
-
     if (!amt || amt <= 0) {
       setError('Enter a valid amount greater than 0')
       return
     }
-
     const currentBalance = roundMoney(expenseState.balance_amount)
     if (amt > currentBalance) {
       setError('Amount exceeds invoice balance')
       return
     }
-
     setSaving(true)
     const formEl = e.currentTarget
     const formData = new FormData(formEl)
@@ -141,23 +132,18 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
       'added_by_name',
       users.find(u => u.id === formData.get('added_by_user_id'))?.name || ''
     )
-
     if (compressedProofFile.current) {
       formData.set('proof', compressedProofFile.current)
     }
-
     try {
       await addPayment(expenseNo, formData)
-
       const newPaid = roundMoney(expenseState.paid_amount + amt)
       const newBalance = roundMoney(expenseState.total_amount - newPaid)
-
       setExpenseState({
         ...expenseState,
         paid_amount: newPaid,
         balance_amount: newBalance,
       })
-
       setSuccess('Payment saved successfully')
       setAmount('')
       setPaymentMode('Cash')
@@ -175,12 +161,14 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
 
   if (success) {
     return (
-      <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col justify-center p-4 pt-8 pb-8">
-        <div className="max-w-md mx-auto w-full flex-shrink-0">
-          <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4">
-            <div className="text-center success-animate">
-              <div className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto success-pulse shadow-md shadow-emerald-500/30">
-                <span className="text-2xl text-white">✓</span>
+      <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col justify-center p-4 pt-8 pb-8 cursor-default">
+        <div className="max-w-md mx-auto w-full flex-shrink-0 cursor-default">
+          <div className="bg-white rounded-xl shadow-lg shadow-slate-200/50 p-4 sm:p-5 space-y-4 cursor-default">
+            <div className="text-center success-animate success-icon-wrap cursor-default select-none">
+              <div className="w-14 h-14 rounded-full bg-emerald-500 flex items-center justify-center mx-auto success-pulse shadow-md shadow-emerald-500/30 success-icon-wrap cursor-default pointer-events-none">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
               <h1 className="text-lg font-bold text-emerald-800 mt-3">
                 Payment Saved Successfully
@@ -216,18 +204,35 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
               </div>
             </div>
             <div className="space-y-2 pt-1">
+            {expenseState.balance_amount > 0 && (
+                <button
+                  type="button"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
+                  onClick={() => setSuccess(null)}
+                >
+                  + Add Payment
+                </button>
+              )}
               <button
-                className="w-full border-2 border-blue-600 text-blue-700 hover:bg-blue-50 py-2 rounded-lg text-xs font-semibold transition-colors duration-200"
+                type="button"
+                className="w-full border-2 border-blue-600 text-blue-700 hover:bg-blue-50 py-2 rounded-lg text-xs font-semibold transition-colors duration-200 cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
                 onClick={() => router.push(`/expenses/${expenseNo}/history`)}
               >
                 View Payment History
               </button>
               <button
-                className="w-full border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg text-xs font-medium transition-colors duration-200"
+                type="button"
+                className="w-full border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg text-xs font-medium transition-colors duration-200 cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
                 onClick={() => router.push('/dashboard')}
               >
-                Back to Dashboard
+                Go to Dashboard
               </button>
+              <Link
+                href="/"
+                className="block w-full border border-slate-300 text-slate-700 hover:bg-slate-50 py-2 rounded-lg text-xs font-medium transition-colors duration-200 text-center cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
+              >
+                Back to Home
+              </Link>
             </div>
           </div>
         </div>
@@ -238,6 +243,9 @@ export function AddPaymentForm({ expense, users, expenseNo }: Props) {
   return (
     <div className="min-h-screen bg-gray-100 p-3">
       <div className="max-w-md mx-auto bg-white rounded-xl shadow p-4 space-y-4">
+        <Link href="/" className="inline-block mb-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
+          ← Back to Home
+        </Link>
         <div>
           <h1 className="text-xl font-bold text-blue-900">Add Payment</h1>
           <div className="text-xs text-gray-600 mt-1">

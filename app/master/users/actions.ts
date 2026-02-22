@@ -25,6 +25,22 @@ export async function getUsers(): Promise<{ id: string; name: string }[]> {
   }))
 }
 
+export type UserListItem = { id: string; email: string; name: string | null; role: string | null }
+
+export async function getUsersList(): Promise<UserListItem[]> {
+  const orgId = await getCurrentUserOrgId()
+  if (!orgId) return []
+
+  const { data, error } = await supabaseService
+    .from('users')
+    .select('id, email, name, role')
+    .eq('org_id', orgId)
+    .order('email')
+
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
 export async function inviteUser(email: string): Promise<InviteResult> {
   const normalizedEmail = email.trim().toLowerCase()
 
