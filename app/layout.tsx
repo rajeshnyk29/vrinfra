@@ -19,22 +19,28 @@ export const viewport = {
 }
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerSupabase()
-  const { data: { user } } = await supabase.auth.getUser()
   let orgName: string | null = null
 
-  if (user) {
-    try {
-      await ensureProfile(user)
-      const { data: profile } = await supabaseService.from('users').select('org_id').eq('auth_user_id', user.id).single()
-      const orgId = profile?.org_id ?? await getCurrentUserOrgId()
-      if (orgId) {
-        const { data: org } = await supabaseService.from('organizations').select('name').eq('id', orgId).single()
-        orgName = org?.name ?? null
+  try {
+    const supabase = await createServerSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (user) {
+      try {
+        await ensureProfile(user)
+        const { data: profile } = await supabaseService.from('users').select('org_id').eq('auth_user_id', user.id).single()
+        const orgId = profile?.org_id ?? await getCurrentUserOrgId()
+        if (orgId) {
+          const { data: org } = await supabaseService.from('organizations').select('name').eq('id', orgId).single()
+          orgName = org?.name ?? null
+        }
+      } catch (e) {
+        console.error('Layout ensureProfile/org fetch:', e)
       }
-    } catch (e) {
-      console.error('Layout ensureProfile/org fetch:', e)
     }
+  } catch (e) {
+    console.error('Layout auth:', e)
+    orgName = null
   }
 
   return (

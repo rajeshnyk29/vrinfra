@@ -34,8 +34,10 @@ export default function SignInPage() {
         return
       }
       const redirect = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') || '/' : '/'
-      router.push(redirect)
-      router.refresh()
+      // Allow session cookies to be set before full navigation (helps PWA/standalone)
+      setTimeout(() => {
+        window.location.href = redirect
+      }, 200)
     } catch (err: any) {
       setError(err?.message || 'Failed to sign in')
     } finally {
