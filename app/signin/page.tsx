@@ -33,7 +33,6 @@ export default function SignInPage() {
         }
         return
       }
-
       const redirect = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('redirect') || '/' : '/'
       router.push(redirect)
       router.refresh()

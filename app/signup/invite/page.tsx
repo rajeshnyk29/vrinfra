@@ -21,11 +21,16 @@ export default function InviteSignUpPage() {
         const hash = window.location.hash.startsWith('#')
           ? window.location.hash.slice(1)
           : window.location.hash
+        const search = window.location.search.startsWith('?')
+          ? window.location.search.slice(1)
+          : window.location.search
 
-        const params = new URLSearchParams(hash)
-        const accessToken = params.get('access_token')
-        const refreshToken = params.get('refresh_token')
-        const type = params.get('type')
+        const hashParams = new URLSearchParams(hash)
+        const queryParams = new URLSearchParams(search)
+
+        const accessToken = hashParams.get('access_token') || queryParams.get('access_token')
+        const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token')
+        const type = hashParams.get('type') || queryParams.get('type')
 
         if (!accessToken || !refreshToken) {
           setStatus('error')

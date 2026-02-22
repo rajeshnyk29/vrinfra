@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import ExcelJS from 'exceljs'
 
@@ -25,6 +25,8 @@ type Site = { id: string; name: string }
 
 type Template = 'card' | 'table'
 
+type DateSort = 'newest' | 'oldest'
+
 type Props = {
   expenses: Expense[]
   sites: Site[]
@@ -43,6 +45,33 @@ function getMonthKey(exp: Expense): string | null {
   return `${y}-${m}`
 }
 
+function getSortKey(exp: Expense): string {
+  return exp.created_at || exp.expense_date || ''
+}
+
+function formatAddedOn(exp: Expense): string {
+  const dateStr = exp.created_at || exp.expense_date
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+// Client-only "mounted" flag so server and first client render match (avoids hydration mismatch)
+let clientMounted = false
+function useClientMounted() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      clientMounted = true
+      onStoreChange()
+      return () => {
+        clientMounted = false
+      }
+    },
+    () => clientMounted,
+    () => false
+  )
+}
+
 export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap, categoryMap, vendorMap }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'OPEN' | 'CLOSED'>('all')
   const [siteFilter, setSiteFilter] = useState<string>('all')
@@ -51,6 +80,8 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
   const categoryDropdownRef = useRef<HTMLDivElement>(null)
   const [template, setTemplate] = useState<Template>('table')
+  const [dateSort, setDateSort] = useState<DateSort>('newest')
+  const mounted = useClientMounted()
 
   const categories = Object.entries(categoryMap).map(([id, name]) => ({ id, name }))
 
@@ -65,7 +96,17 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
     return matchStatus && matchSite && matchMonth && matchCategory
   })
 
-  const totals = filtered.reduce(
+  const sorted = [...filtered].sort((a, b) => {
+    const keyA = getSortKey(a)
+    const keyB = getSortKey(b)
+    if (!keyA && !keyB) return 0
+    if (!keyA) return 1
+    if (!keyB) return -1
+    if (dateSort === 'newest') return keyB.localeCompare(keyA)
+    return keyA.localeCompare(keyB)
+  })
+
+  const totals = sorted.reduce(
     (acc, exp) => ({
       total_amount: acc.total_amount + exp.total_amount,
       paid_amount: acc.paid_amount + exp.paid_amount,
@@ -199,7 +240,7 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
   )
 
   async function handleExportCurrentView() {
-    if (filtered.length === 0) {
+    if (sorted.length === 0) {
       alert('No expenses to export for current filters.')
       return
     }
@@ -209,6 +250,7 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
 
     worksheet.columns = [
       { header: 'Expense No', key: 'expense_no', width: 15 },
+      { header: 'Added on', key: 'added_on', width: 14 },
       { header: 'Site', key: 'site', width: 20 },
       { header: 'Category', key: 'category', width: 20 },
       { header: 'Vendor', key: 'vendor', width: 20 },
@@ -219,9 +261,10 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
       { header: 'Status', key: 'status', width: 12 },
     ]
 
-    filtered.forEach((exp) => {
+    sorted.forEach((exp) => {
       worksheet.addRow({
         expense_no: exp.expense_no,
+        added_on: formatAddedOn(exp),
         site: getSiteName(exp),
         category: getCategoryName(exp),
         vendor: getVendorName(exp),
@@ -284,106 +327,124 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
         </div>
 
         <div className="flex flex-wrap gap-2 items-end">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setStatusFilter('OPEN')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'OPEN' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            Open
-          </button>
-          <button
-            onClick={() => setStatusFilter('CLOSED')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'CLOSED' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-          >
-            Closed
-          </button>
+          {!mounted ? (
+            <div className="h-9 w-full max-w-xs rounded bg-gray-100 animate-pulse" aria-hidden />
+          ) : (
+            <>
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setStatusFilter('OPEN')}
+                className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'OPEN' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              >
+                Open
+              </button>
+              <button
+                onClick={() => setStatusFilter('CLOSED')}
+                className={`px-3 py-1.5 rounded text-sm font-medium ${statusFilter === 'CLOSED' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              >
+                Closed
+              </button>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Month</label>
-            <input
-              type="month"
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
-              className="border p-2 rounded text-sm"
-            />
-          </div>
+              <div className="inline-block">
+                <label className="block text-xs text-gray-500 mb-1">Month</label>
+                <input
+                  type="month"
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                  className="border p-2 rounded text-sm"
+                />
+              </div>
 
-          <div className="relative" ref={categoryDropdownRef}>
-            <label className="block text-xs text-gray-500 mb-1">Category</label>
-            <button
-              type="button"
-              onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-              className="w-full min-w-[180px] border p-2 rounded text-sm text-left bg-white flex justify-between items-center"
-            >
-              <span>
-                {categoryFilter.size === 0
-                  ? 'All categories'
-                  : `${categoryFilter.size} selected`}
-              </span>
-              <span className="text-gray-400">{categoryDropdownOpen ? '▲' : '▼'}</span>
-            </button>
-            {categoryDropdownOpen && (
-              <div className="absolute top-full left-0 mt-1 z-10 bg-white border rounded shadow-lg max-h-60 overflow-y-auto min-w-[180px]">
+              <div className="inline-block">
+                <label className="block text-xs text-gray-500 mb-1">Sort by date</label>
+                <select
+                  value={dateSort}
+                  onChange={(e) => setDateSort(e.target.value as DateSort)}
+                  className="border p-2 rounded text-sm"
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
+              </div>
+
+              <div className="relative" ref={categoryDropdownRef}>
+                <label className="block text-xs text-gray-500 mb-1">Category</label>
                 <button
                   type="button"
-                  onClick={toggleSelectAllCategories}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 border-b"
+                  onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+                  className="w-full min-w-[180px] border p-2 rounded text-sm text-left bg-white flex justify-between items-center"
                 >
-                  {categoryFilter.size === categories.length ? 'Deselect all' : 'Select all'}
+                  <span>
+                    {categoryFilter.size === 0
+                      ? 'All categories'
+                      : `${categoryFilter.size} selected`}
+                  </span>
+                  <span className="text-gray-400">{categoryDropdownOpen ? '▲' : '▼'}</span>
                 </button>
-                {categories.map(({ id, name }) => (
-                  <label
-                    key={id}
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={categoryFilter.has(id)}
-                      onChange={() => toggleCategory(id)}
-                      className="rounded"
-                    />
-                    <span>{name}</span>
-                  </label>
-                ))}
+                {categoryDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 z-10 bg-white border rounded shadow-lg max-h-60 overflow-y-auto min-w-[180px]">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllCategories}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 border-b"
+                    >
+                      {categoryFilter.size === categories.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                    {categories.map(({ id, name }) => (
+                      <label
+                        key={id}
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={categoryFilter.has(id)}
+                          onChange={() => toggleCategory(id)}
+                          className="rounded"
+                        />
+                        <span>{name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Filter by site</label>
-            <select
-              value={siteFilter}
-              onChange={(e) => setSiteFilter(e.target.value)}
-              className="w-full max-w-xs border p-2 rounded text-sm"
-            >
-              <option value="all">All sites</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
+              <div className="inline-block">
+                <label className="block text-xs text-gray-500 mb-1">Filter by site</label>
+                <select
+                  value={siteFilter}
+                  onChange={(e) => setSiteFilter(e.target.value)}
+                  className="w-full max-w-xs border p-2 rounded text-sm"
+                >
+                  <option value="all">All sites</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
 
-          <button
-            onClick={handleExportCurrentView}
-            className="ml-auto px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 text-white"
-          >
-            Export to Excel
-          </button>
+              <button
+                onClick={handleExportCurrentView}
+                className="ml-auto px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 text-white"
+              >
+                Export to Excel
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {sorted.length === 0 ? (
         <div className="text-gray-500 text-sm">No expenses match the filters</div>
       ) : (
         <>
           <div className="md:hidden space-y-3">
             {summaryBar}
-            {filtered.map((exp) => {
+            {sorted.map((exp) => {
               const siteName = getSiteName(exp)
               const categoryName = getCategoryName(exp)
               const vendorName = getVendorName(exp)
@@ -395,7 +456,9 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
                       {exp.status}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">{siteName}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {siteName} · Added on {formatAddedOn(exp)}
+                  </p>
                   <div className="mt-1.5 pl-3 border-l-4 border-blue-500">
                     <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{categoryName}</span>
                     {vendorName !== '—' && <span className="ml-1 text-xs text-gray-600">• {vendorName}</span>}
@@ -431,7 +494,7 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
             {template === 'card' && (
               <div className="space-y-3">
                 {summaryBar}
-                {filtered.map((exp) => {
+                {sorted.map((exp) => {
                   const siteName = getSiteName(exp)
                   const categoryName = getCategoryName(exp)
                   const vendorName = getVendorName(exp)
@@ -441,7 +504,9 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
                         <span className="font-bold">{exp.expense_no}</span>
                         <span className={exp.status === 'OPEN' ? 'bg-orange-200 text-xs px-2 py-1 rounded' : 'bg-green-200 text-xs px-2 py-1 rounded'}>{exp.status}</span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{siteName}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {siteName} · Added on {formatAddedOn(exp)}
+                      </p>
                       <div className="mt-1.5 pl-3 border-l-4 border-blue-500">
                         <span className="inline-block px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-medium">{categoryName}</span>
                         {vendorName !== '—' && <span className="ml-1 text-xs text-gray-600">• {vendorName}</span>}
@@ -476,6 +541,7 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
                   <thead>
                     <tr className="bg-gray-100 border-b">
                       <th className="text-left p-2 font-semibold">Expense</th>
+                      <th className="text-left p-2 font-semibold">Added on</th>
                       <th className="text-left p-2 font-semibold">Site</th>
                       <th className="text-left p-2 font-semibold">Category</th>
                       <th className="text-left p-2 font-semibold">Vendor</th>
@@ -489,9 +555,10 @@ export function DashboardContent({ expenses, sites, paymentsByExpenseId, siteMap
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((exp) => (
+                    {sorted.map((exp) => (
                       <tr key={exp.id} className="border-b hover:bg-gray-50">
                         <td className="p-2 font-medium">{exp.expense_no}</td>
+                        <td className="p-2 whitespace-nowrap">{formatAddedOn(exp)}</td>
                         <td className="p-2">{getSiteName(exp)}</td>
                         <td className="p-2">{getCategoryName(exp)}</td>
                         <td className="p-2">{getVendorName(exp)}</td>
